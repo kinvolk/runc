@@ -19,6 +19,7 @@ import (
 	"github.com/opencontainers/runc/libcontainer/cgroups/fs"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sys/unix"
 )
 
 type Manager struct {
@@ -68,6 +69,7 @@ var subsystems = subsystemSet{
 const (
 	testScopeWait = 4
 	testSliceWait = 4
+	cgroupUnified = "/sys/fs/cgroup/unified"
 )
 
 var (
@@ -360,6 +362,19 @@ func (m *Manager) Apply(pid int) error {
 		}
 		paths[s.Name()] = subsystemPath
 	}
+
+	// If systemd is using cgroups-v2 add the slice path of this container to
+	// the paths so following process executed with exec join that cgroup-v2
+	// as well
+	if isCgroupsv2Available() {
+		// "" means cgroup-v2 path
+		cgroupsv2Path, err := getSubsystemPath(m.Cgroups, "")
+		if err != nil && cgroups.IsNotFound(err) {
+			return err
+		}
+		paths["cgroups-v2"] = cgroupsv2Path
+	}
+
 	m.Paths = paths
 	return nil
 }
@@ -469,10 +484,32 @@ func ExpandSlice(slice string) (string, error) {
 	return path, nil
 }
 
+// Check if cgroups-v2 is mounted on /sys/fs/cgroup/unified/ as stated in
+// https://systemd.io/CGROUP_DELEGATION.html#three-different-tree-setups-
+// Only the hybrid mode is taken into consideration as unified mode is not
+// supported in runc yet
+func isCgroupsv2Available() bool {
+	var statfs unix.Statfs_t
+
+	if err := unix.Statfs(cgroupUnified, &statfs); err != nil {
+		return false
+	}
+
+	return (statfs.Type == unix.CGROUP2_SUPER_MAGIC)
+}
+
 func getSubsystemPath(c *configs.Cgroup, subsystem string) (string, error) {
-	mountpoint, err := cgroups.FindCgroupMountpoint(c.Path, subsystem)
-	if err != nil {
-		return "", err
+	var mountpoint string
+	// if subsystem is empty it means that we are looking for the
+	// cgroups-v2 path
+	if len(subsystem) == 0 {
+		mountpoint = cgroupUnified
+	} else {
+		var err error
+		mountpoint, err = cgroups.FindCgroupMountpoint(c.Path, subsystem)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	initPath, err := cgroups.GetInitCgroup(subsystem)
