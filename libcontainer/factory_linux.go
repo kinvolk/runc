@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"runtime/debug"
 	"strconv"
+	"strings"
 
 	securejoin "github.com/cyphar/filepath-securejoin"
 	"github.com/moby/sys/mountinfo"
@@ -295,6 +296,12 @@ func (l *LinuxFactory) StartInitialization() (err error) {
 		return fmt.Errorf("unable to convert _LIBCONTAINER_LOGPIPE: %w", err)
 	}
 
+	// Get mount files (O_PATH).
+	mountFds, err := parseMountFds()
+	if err != nil {
+		return err
+	}
+
 	// clear the current process's environment to clean any libcontainer
 	// specific env vars.
 	os.Clearenv()
@@ -305,7 +312,7 @@ func (l *LinuxFactory) StartInitialization() (err error) {
 		}
 	}()
 
-	i, err := newContainerInit(it, pipe, consoleSocket, fifofd, logPipeFd)
+	i, err := newContainerInit(it, pipe, consoleSocket, fifofd, logPipeFd, mountFds)
 	if err != nil {
 		return err
 	}
@@ -358,4 +365,33 @@ func NewgidmapPath(newgidmapPath string) func(*LinuxFactory) error {
 		l.NewgidmapPath = newgidmapPath
 		return nil
 	}
+}
+
+func parseMountFds() ([]*int, error) {
+	fdsStr := os.Getenv("_LIBCONTAINER_MOUNT_FDS")
+	if fdsStr == "" {
+		// Always return the nil slice if no fd is present.
+		return nil, nil
+	}
+
+	// This string was created so we can parse it just fine with strings.Split() and it has the proper len.
+	fds := strings.Split(fdsStr, ";")
+
+	// Indexes in the mountFds slice are used to assign/pair the fd (if any) to a mount in the container. Therefore,
+	// the mountFds slice MUST be of size len(fds), that was constructed with the same size as the container mounts.
+	mountFds := make([]*int, len(fds))
+	for i, fd := range fds {
+		if fd == "" {
+			continue
+		}
+
+		mountFd, err := strconv.Atoi(fd)
+		if err != nil {
+			return nil, fmt.Errorf("unable to convert _LIBCONTAINER_MOUNT_FDS(%q): %w", fdsStr, err)
+		}
+
+		mountFds[i] = &mountFd
+	}
+
+	return mountFds, nil
 }
