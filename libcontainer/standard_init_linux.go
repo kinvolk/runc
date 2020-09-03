@@ -24,6 +24,7 @@ type linuxStandardInit struct {
 	consoleSocket *os.File
 	parentPid     int
 	fifoFd        int
+	mountFiles    []*os.File
 	config        *initConfig
 }
 
@@ -85,8 +86,15 @@ func (l *linuxStandardInit) Init() error {
 
 	// initialises the labeling system
 	selinux.GetEnabled()
-	if err := prepareRootfs(l.pipe, l.config); err != nil {
+	if err := prepareRootfs(l.pipe, l.config, l.mountFiles); err != nil {
 		return err
+	}
+	// We don't need mountFiles anymore: close them all
+	for _, m := range l.mountFiles {
+		if m == nil {
+			continue
+		}
+		m.Close()
 	}
 	// Set up the console. This has to be done *before* we finalize the rootfs,
 	// but *after* we've given the user the chance to set up all of the mounts
