@@ -873,6 +873,9 @@ func SetupSeccomp(config *specs.LinuxSeccomp) (*configs.Seccomp, error) {
 	}
 	newConfig.DefaultAction = newDefaultAction
 
+	newConfig.ListenerPath = config.ListenerPath
+	newConfig.ListenerMetadata = config.ListenerMetadata
+
 	// Loop through all syscall blocks and convert them to libcontainer format
 	for _, call := range config.Syscalls {
 		newAction, err := seccomp.ConvertStringToAction(string(call.Action))
