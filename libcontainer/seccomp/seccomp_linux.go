@@ -16,12 +16,13 @@ import (
 )
 
 var (
-	actAllow = libseccomp.ActAllow
-	actTrap  = libseccomp.ActTrap
-	actKill  = libseccomp.ActKill
-	actTrace = libseccomp.ActTrace.SetReturnCode(int16(unix.EPERM))
-	actLog   = libseccomp.ActLog
-	actErrno = libseccomp.ActErrno.SetReturnCode(int16(unix.EPERM))
+	actAllow  = libseccomp.ActAllow
+	actTrap   = libseccomp.ActTrap
+	actKill   = libseccomp.ActKill
+	actTrace  = libseccomp.ActTrace.SetReturnCode(int16(unix.EPERM))
+	actLog    = libseccomp.ActLog
+	actErrno  = libseccomp.ActErrno.SetReturnCode(int16(unix.EPERM))
+	actNotify = libseccomp.ActNotify
 )
 
 const (
@@ -33,54 +34,86 @@ const (
 // Started in the container init process, and carried over to all child processes
 // Setns calls, however, require a separate invocation, as they are not children
 // of the init until they join the namespace
-func InitSeccomp(config *configs.Seccomp) error {
+func InitSeccomp(config *configs.Seccomp) (int, error) {
 	if config == nil {
-		return errors.New("cannot initialize Seccomp - nil config passed")
+		return -1, errors.New("cannot initialize Seccomp - nil config passed")
 	}
 
 	defaultAction, err := getAction(config.DefaultAction, nil)
 	if err != nil {
-		return errors.New("error initializing seccomp - invalid default action")
+		return -1, errors.New("error initializing seccomp - invalid default action")
 	}
 
 	filter, err := libseccomp.NewFilter(defaultAction)
 	if err != nil {
-		return fmt.Errorf("error creating filter: %s", err)
+		return -1, fmt.Errorf("error creating filter: %s", err)
+	}
+
+	// TODO: config.Flags defines the options to pass to seccomp(2) but
+	// it's not taken into consideration.
+	notifyFeatureRequired := false
+	for _, call := range config.Syscalls {
+		if call.Action == configs.Notify {
+			notifyFeatureRequired = true
+			break
+		}
+	}
+	// Ignore GetAPI() error: if API level operations are not supported, it
+	// means seccompAPILevel == 0.
+	seccompAPILevel, _ := libseccomp.GetAPI()
+	if notifyFeatureRequired {
+		if seccompAPILevel < 5 {
+			return -1, fmt.Errorf("seccomp notify unsupported: API level: got %d, want at least 6. Please try with libseccomp >= 2.5.0 and Linux >= 5.7", seccompAPILevel)
+		} else if seccompAPILevel == 5 {
+			// The current Linux kernel does not provide support for Tsync + Notify.
+			// Users should update to Linux >= 5.7 or backport this patch:
+			// https://github.com/torvalds/linux/commit/51891498f2da78ee64dfad88fa53c9e85fb50abf
+
+			// As a workaround, disable Tsync. This is not ideal because seccomp will
+			// not be applied to all threads.
+			filter.SetTsync(false)
+		}
 	}
 
 	// Add extra architectures
 	for _, arch := range config.Architectures {
 		scmpArch, err := libseccomp.GetArchFromString(arch)
 		if err != nil {
-			return fmt.Errorf("error validating Seccomp architecture: %s", err)
+			return -1, fmt.Errorf("error validating Seccomp architecture: %s", err)
 		}
 
 		if err := filter.AddArch(scmpArch); err != nil {
-			return fmt.Errorf("error adding architecture to seccomp filter: %s", err)
+			return -1, fmt.Errorf("error adding architecture to seccomp filter: %s", err)
 		}
 	}
 
 	// Unset no new privs bit
 	if err := filter.SetNoNewPrivsBit(false); err != nil {
-		return fmt.Errorf("error setting no new privileges: %s", err)
+		return -1, fmt.Errorf("error setting no new privileges: %s", err)
 	}
 
 	// Add a rule for each syscall
 	for _, call := range config.Syscalls {
 		if call == nil {
-			return errors.New("encountered nil syscall while initializing Seccomp")
+			return -1, errors.New("encountered nil syscall while initializing Seccomp")
 		}
 
 		if err = matchCall(filter, call); err != nil {
-			return err
+			return -1, err
 		}
 	}
 
 	if err = filter.Load(); err != nil {
-		return fmt.Errorf("error loading seccomp filter into kernel: %s", err)
+		return -1, fmt.Errorf("error loading seccomp filter into kernel: %s", err)
 	}
-
-	return nil
+	if !notifyFeatureRequired {
+		return -1, nil
+	}
+	seccompFd, err := filter.GetNotifFd()
+	if err != nil {
+		return -1, fmt.Errorf("error getting seccomp notify fd: %s", err)
+	}
+	return int(seccompFd), nil
 }
 
 // IsEnabled returns if the kernel has been configured to support seccomp.
@@ -122,6 +155,8 @@ func getAction(act configs.Action, errnoRet *uint) (libseccomp.ScmpAction, error
 		return actTrace, nil
 	case configs.Log:
 		return actLog, nil
+	case configs.Notify:
+		return actNotify, nil
 	default:
 		return libseccomp.ActInvalid, errors.New("invalid action, cannot use in rule")
 	}

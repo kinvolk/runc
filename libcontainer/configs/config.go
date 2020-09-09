@@ -30,9 +30,11 @@ type IDMap struct {
 // for syscalls. Additional architectures can be added by specifying them in
 // Architectures.
 type Seccomp struct {
-	DefaultAction Action     `json:"default_action"`
-	Architectures []string   `json:"architectures"`
-	Syscalls      []*Syscall `json:"syscalls"`
+	DefaultAction    Action     `json:"default_action"`
+	Architectures    []string   `json:"architectures"`
+	Syscalls         []*Syscall `json:"syscalls"`
+	ListenerPath     string     `json:"listenerPath,omitempty"`
+	ListenerMetadata string     `json:"listenerMetadata,omitempty"`
 }
 
 // Action is taken upon rule match in Seccomp
@@ -45,6 +47,7 @@ const (
 	Allow
 	Trace
 	Log
+	Notify
 )
 
 // Operator is a comparison operator to be used when matching syscall arguments in Seccomp
