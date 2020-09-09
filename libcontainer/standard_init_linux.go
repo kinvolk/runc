@@ -142,12 +142,6 @@ func (l *linuxStandardInit) Init() error {
 			return errors.Wrap(err, "set nonewprivileges")
 		}
 	}
-	// Tell our parent that we're ready to Execv. This must be done before the
-	// Seccomp rules have been applied, because we need to be able to read and
-	// write to a socket.
-	if err := syncParentReady(l.pipe); err != nil {
-		return errors.Wrap(err, "sync ready")
-	}
 	if err := selinux.SetExecLabel(l.config.ProcessLabel); err != nil {
 		return errors.Wrap(err, "set process label")
 	}
@@ -156,9 +150,21 @@ func (l *linuxStandardInit) Init() error {
 	// do this before dropping capabilities; otherwise do it as late as possible
 	// just before execve so as few syscalls take place after it as possible.
 	if l.config.Config.Seccomp != nil && !l.config.NoNewPrivileges {
-		if err := seccomp.InitSeccomp(l.config.Config.Seccomp); err != nil {
+		seccompFd, err := seccomp.InitSeccomp(l.config.Config.Seccomp)
+		if err != nil {
 			return err
 		}
+		if seccompFd != -1 {
+			err := syncParentSeccomp(l.pipe, seccompFd)
+			unix.Close(seccompFd)
+			if err != nil {
+				return errors.Wrap(err, "sync parent seccomp")
+			}
+		}
+	}
+	// Tell our parent that we're ready to Execv.
+	if err := syncParentReady(l.pipe); err != nil {
+		return errors.Wrap(err, "sync ready")
 	}
 	if err := finalizeNamespace(l.config); err != nil {
 		return err
@@ -180,6 +186,22 @@ func (l *linuxStandardInit) Init() error {
 	name, err := exec.LookPath(l.config.Args[0])
 	if err != nil {
 		return err
+	}
+	// Set seccomp as close to execve as possible, so as few syscalls take
+	// place afterward (reducing the amount of syscalls that users need to
+	// enable in their seccomp profiles).
+	if l.config.Config.Seccomp != nil && l.config.NoNewPrivileges {
+		seccompFd, err := seccomp.InitSeccomp(l.config.Config.Seccomp)
+		if err != nil {
+			return newSystemErrorWithCause(err, "init seccomp")
+		}
+		if seccompFd != -1 {
+			err := syncParentSeccomp(l.pipe, seccompFd)
+			unix.Close(seccompFd)
+			if err != nil {
+				return errors.Wrap(err, "sync parent seccomp")
+			}
+		}
 	}
 	// Close the pipe to signal that we have completed our init.
 	logrus.Debugf("init: closing the pipe to signal completion")
@@ -208,14 +230,6 @@ func (l *linuxStandardInit) Init() error {
 	// since been resolved.
 	// https://github.com/torvalds/linux/blob/v4.9/fs/exec.c#L1290-L1318
 	unix.Close(l.fifoFd)
-	// Set seccomp as close to execve as possible, so as few syscalls take
-	// place afterward (reducing the amount of syscalls that users need to
-	// enable in their seccomp profiles).
-	if l.config.Config.Seccomp != nil && l.config.NoNewPrivileges {
-		if err := seccomp.InitSeccomp(l.config.Config.Seccomp); err != nil {
-			return newSystemErrorWithCause(err, "init seccomp")
-		}
-	}
 
 	s := l.config.SpecState
 	s.Pid = unix.Getpid()

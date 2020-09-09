@@ -70,8 +70,16 @@ func (l *linuxSetnsInit) Init() error {
 	// do this before dropping capabilities; otherwise do it as late as possible
 	// just before execve so as few syscalls take place after it as possible.
 	if l.config.Config.Seccomp != nil && !l.config.NoNewPrivileges {
-		if err := seccomp.InitSeccomp(l.config.Config.Seccomp); err != nil {
+		seccompFd, err := seccomp.InitSeccomp(l.config.Config.Seccomp)
+		if err != nil {
 			return err
+		}
+		if seccompFd != -1 {
+			err := syncParentSeccomp(l.pipe, seccompFd)
+			unix.Close(seccompFd)
+			if err != nil {
+				return errors.Wrap(err, "sync parent seccomp")
+			}
 		}
 	}
 	if err := finalizeNamespace(l.config); err != nil {
@@ -84,8 +92,16 @@ func (l *linuxSetnsInit) Init() error {
 	// place afterward (reducing the amount of syscalls that users need to
 	// enable in their seccomp profiles).
 	if l.config.Config.Seccomp != nil && l.config.NoNewPrivileges {
-		if err := seccomp.InitSeccomp(l.config.Config.Seccomp); err != nil {
+		seccompFd, err := seccomp.InitSeccomp(l.config.Config.Seccomp)
+		if err != nil {
 			return newSystemErrorWithCause(err, "init seccomp")
+		}
+		if seccompFd != -1 {
+			err := syncParentSeccomp(l.pipe, seccompFd)
+			unix.Close(seccompFd)
+			if err != nil {
+				return errors.Wrap(err, "sync parent seccomp")
+			}
 		}
 	}
 	logrus.Debugf("setns_init: about to exec")

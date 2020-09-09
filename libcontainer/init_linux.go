@@ -261,6 +261,20 @@ func syncParentHooks(pipe io.ReadWriter) error {
 	return readSync(pipe, procResume)
 }
 
+// syncParentSeccomp sends to the given pipe a JSON payload which
+// indicates that the parent should pick up the seccomp fd with pidfd_getfd()
+// and send it to the seccomp agent over a unix socket. It then waits for
+// the parent to indicate that it is cleared to resume.
+func syncParentSeccomp(pipe io.ReadWriter, seccompFd int) error {
+	// Tell parent.
+	if err := writeSyncWithFd(pipe, procSeccomp, seccompFd); err != nil {
+		return err
+	}
+
+	// Wait for parent to give the all-clear.
+	return readSync(pipe, procSeccompDone)
+}
+
 // setupUser changes the groups, gid, and uid for the user inside the container
 func setupUser(config *initConfig) error {
 	// Set up defaults.
