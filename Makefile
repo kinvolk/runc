@@ -33,10 +33,16 @@ GO_BUILD_STATIC := CGO_ENABLED=1 $(GO) build $(MOD_VENDOR) $(EXTRA_FLAGS) -tags 
 runc:
 	$(GO_BUILD) -o runc .
 
-all: runc recvtty
+all: runc recvtty seccomphook seccompagent
 
 recvtty:
 	$(GO_BUILD) -o contrib/cmd/recvtty/recvtty ./contrib/cmd/recvtty
+
+seccomphook:
+	$(GO_BUILD) -o contrib/cmd/seccomphook/seccomphook ./contrib/cmd/seccomphook
+
+seccompagent:
+	$(GO_BUILD) -o contrib/cmd/seccompagent/seccompagent ./contrib/cmd/seccompagent
 
 static:
 	$(GO_BUILD_STATIC) -o runc .
