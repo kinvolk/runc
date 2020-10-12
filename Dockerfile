@@ -33,13 +33,25 @@ RUN echo 'deb https://download.opensuse.org/repositories/devel:/tools:/criu/Debi
         libseccomp-dev:armhf \
         libseccomp-dev:ppc64el \
         libseccomp2 \
+        libaio-dev \
+        libcap-dev \
+        libnet-dev \
+        libnl-3-dev \
+        libprotobuf-c-dev \
+        libprotobuf-dev \
         pkg-config \
         python-minimal \
         skopeo \
         sudo \
         uidmap \
+        astyle \
+        golint \
+        gperf \
     && apt-get clean \
     && rm -rf /var/cache/apt /var/lib/apt/lists/* /etc/apt/sources.list.d/*.list
+
+COPY script/install-libseccomp.sh /
+RUN /install-libseccomp.sh
 
 # Add a dummy user for the rootless integration tests. While runC does
 # not require an entry in /etc/passwd to operate, one of the tests uses
