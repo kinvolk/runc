@@ -19,8 +19,8 @@ jobs:
       env:
         - RUNC_USE_SYSTEMD=1
       script:
-        - make all
-        - sudo PATH="$PATH" make localintegration RUNC_USE_SYSTEMD=1
+        - PKG_CONFIG_PATH=/lib/x86_64-linux-gnu/pkgconfig make all
+        - sudo PATH="$PATH" PKG_CONFIG_PATH=/lib/x86_64-linux-gnu/pkgconfig make localintegration RUNC_USE_SYSTEMD=1
     - name: "fedora33"
       before_install:
         - sudo ./script/install-vagrant.sh
@@ -62,7 +62,11 @@ services:
 
 before_install:
   - sudo apt-get -qq update
-  - sudo apt-get install -y libseccomp-dev
+  - sudo apt-get install -y build-essential astyle golint gperf
+  - wget https://github.com/seccomp/libseccomp/releases/download/v2.5.0/libseccomp-2.5.0.tar.gz
+  - echo 463b688bf7d227325b5a465b6bdc3ec4 libseccomp-2.5.0.tar.gz | md5sum -c
+  - tar xf libseccomp-2.5.0.tar.gz
+  - cd libseccomp-2.5.0 && ./configure --prefix=/usr --libdir=/lib/x86_64-linux-gnu && make && sudo make install && cd ..
   - GO111MODULE=off go get -u golang.org/x/lint/golint
   - GO111MODULE=off go get -u github.com/vbatts/git-validation
   - (cd ~ && GO111MODULE=on go get mvdan.cc/sh/v3/cmd/shfmt@v3.2.0)
@@ -70,5 +74,5 @@ before_install:
 
 script:
   - git-validation -run DCO,short-subject -v
-  - make
-  - make clean ci cross
+  - PKG_CONFIG_PATH=/lib/x86_64-linux-gnu/pkgconfig make
+  - PKG_CONFIG_PATH=/lib/x86_64-linux-gnu/pkgconfig make clean ci cross

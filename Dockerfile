@@ -27,20 +27,25 @@ RUN dpkg --add-architecture armel \
         libnl-3-dev \
         libprotobuf-c-dev \
         libprotobuf-dev \
-        libseccomp-dev \
-        libseccomp-dev:arm64 \
-        libseccomp-dev:armel \
-        libseccomp-dev:armhf \
-        libseccomp-dev:ppc64el \
-        libseccomp2 \
         pkg-config \
         protobuf-c-compiler \
         protobuf-compiler \
         python-minimal \
         sudo \
         uidmap \
+	astyle \
+	golint \
+	gperf \
     && apt-get clean \
     && rm -rf /var/cache/apt /var/lib/apt/lists/*;
+
+RUN wget https://github.com/seccomp/libseccomp/releases/download/v2.5.0/libseccomp-2.5.0.tar.gz \
+	&& echo 463b688bf7d227325b5a465b6bdc3ec4 libseccomp-2.5.0.tar.gz | md5sum -c \
+	&& tar xf libseccomp-2.5.0.tar.gz && cd libseccomp-2.5.0 && ./configure                              --prefix=/usr --libdir=/usr/lib/x86_64-linux-gnu      && make && make install && cd .. && rm -rf libseccomp-2.5.0 \
+	&& tar xf libseccomp-2.5.0.tar.gz && cd libseccomp-2.5.0 && ./configure --host=arm-linux-gnueabi     --prefix=/usr --libdir=/usr/lib/arm-linux-gnueabi     && make && make install && cd .. && rm -rf libseccomp-2.5.0 \
+	&& tar xf libseccomp-2.5.0.tar.gz && cd libseccomp-2.5.0 && ./configure --host=arm-linux-gnueabihf   --prefix=/usr --libdir=/usr/lib/arm-linux-gnueabihf   && make && make install && cd .. && rm -rf libseccomp-2.5.0 \
+	&& tar xf libseccomp-2.5.0.tar.gz && cd libseccomp-2.5.0 && ./configure --host=aarch64-linux-gnu     --prefix=/usr --libdir=/usr/lib/aarch64-linux-gnu     && make && make install && cd .. && rm -rf libseccomp-2.5.0 \
+	&& tar xf libseccomp-2.5.0.tar.gz && cd libseccomp-2.5.0 && ./configure --host=powerpc64le-linux-gnu --prefix=/usr --libdir=/usr/lib/powerpc64le-linux-gnu && make && make install && cd .. && rm -rf libseccomp-2.5.0
 
 # Add a dummy user for the rootless integration tests. While runC does
 # not require an entry in /etc/passwd to operate, one of the tests uses
