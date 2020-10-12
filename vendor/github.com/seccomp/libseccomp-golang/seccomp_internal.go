@@ -14,6 +14,13 @@ import (
 // Get the seccomp header in scope
 // Need stdlib.h for free() on cstrings
 
+// To compile libseccomp-golang against a specific version of libseccomp:
+// cd ../libseccomp && mkdir -p prefix
+// ./configure --prefix=$PWD/prefix && make && make install
+// cd ../libseccomp-golang
+// PKG_CONFIG_PATH=$PWD/../libseccomp/prefix/lib/pkgconfig/ make
+// LD_PRELOAD=$PWD/../libseccomp/prefix/lib/libseccomp.so.2.5.0 PKG_CONFIG_PATH=$PWD/../libseccomp/prefix/lib/pkgconfig/ make test
+
 // #cgo pkg-config: libseccomp
 /*
 #include <errno.h>
@@ -72,12 +79,27 @@ const uint32_t C_ARCH_S390X        = SCMP_ARCH_S390X;
 #define SCMP_ACT_LOG 0x7ffc0000U
 #endif
 
+#ifndef SCMP_ACT_KILL_PROCESS
+#define SCMP_ACT_KILL_PROCESS 0x80000000U
+#endif
+
+#ifndef SCMP_ACT_KILL_THREAD
+#define SCMP_ACT_KILL_THREAD	0x00000000U
+#endif
+
+#ifndef SCMP_ACT_NOTIFY
+#define SCMP_ACT_NOTIFY 0x7fc00000U
+#endif
+
 const uint32_t C_ACT_KILL          = SCMP_ACT_KILL;
+const uint32_t C_ACT_KILL_PROCESS  = SCMP_ACT_KILL_PROCESS;
+const uint32_t C_ACT_KILL_THREAD   = SCMP_ACT_KILL_THREAD;
 const uint32_t C_ACT_TRAP          = SCMP_ACT_TRAP;
 const uint32_t C_ACT_ERRNO         = SCMP_ACT_ERRNO(0);
 const uint32_t C_ACT_TRACE         = SCMP_ACT_TRACE(0);
 const uint32_t C_ACT_LOG           = SCMP_ACT_LOG;
 const uint32_t C_ACT_ALLOW         = SCMP_ACT_ALLOW;
+const uint32_t C_ACT_NOTIFY        = SCMP_ACT_NOTIFY;
 
 // The libseccomp SCMP_FLTATR_CTL_LOG member of the scmp_filter_attr enum was
 // added in v2.4.0
@@ -179,6 +201,51 @@ void add_struct_arg_cmp(
 
         return;
 }
+
+// The seccomp notify API functions were added in v2.5.0
+#if (SCMP_VER_MAJOR < 2) || \
+    (SCMP_VER_MAJOR == 2 && SCMP_VER_MINOR < 5)
+
+struct seccomp_data {
+	int nr;
+	__u32 arch;
+	__u64 instruction_pointer;
+	__u64 args[6];
+};
+
+struct seccomp_notif {
+	__u64 id;
+	__u32 pid;
+	__u32 flags;
+	struct seccomp_data data;
+};
+
+struct seccomp_notif_resp {
+	__u64 id;
+	__s64 val;
+	__s32 error;
+	__u32 flags;
+};
+
+int seccomp_notify_alloc(struct seccomp_notif **req, struct seccomp_notif_resp **resp) {
+	return -EOPNOTSUPP;
+}
+int seccomp_notify_fd(const scmp_filter_ctx ctx) {
+	return -EOPNOTSUPP;
+}
+void seccomp_notify_free(struct seccomp_notif *req, struct seccomp_notif_resp *resp) {
+}
+int seccomp_notify_id_valid(int fd, uint64_t id) {
+	return -EOPNOTSUPP;
+}
+int seccomp_notify_receive(int fd, struct seccomp_notif *req) {
+	return -EOPNOTSUPP;
+}
+int seccomp_notify_respond(int fd, struct seccomp_notif_resp *resp) {
+	return -EOPNOTSUPP;
+}
+
+#endif
 */
 import "C"
 
@@ -203,7 +270,7 @@ const (
 	archEnd   ScmpArch = ArchS390X
 	// Comparison boundaries to check for action validity
 	actionStart ScmpAction = ActKill
-	actionEnd   ScmpAction = ActLog
+	actionEnd   ScmpAction = ActKillProcess
 	// Comparison boundaries to check for comparison operator validity
 	compareOpStart ScmpCompareOp = CompareNotEqual
 	compareOpEnd   ScmpCompareOp = CompareMaskedEqual
@@ -236,7 +303,7 @@ func ensureSupportedVersion() error {
 }
 
 // Get the API level
-func getApi() (uint, error) {
+func getAPI() (uint, error) {
 	api := C.seccomp_api_get()
 	if api == 0 {
 		return 0, fmt.Errorf("API level operations are not supported")
@@ -246,9 +313,9 @@ func getApi() (uint, error) {
 }
 
 // Set the API level
-func setApi(api uint) error {
+func setAPI(api uint) error {
 	if retCode := C.seccomp_api_set(C.uint(api)); retCode != 0 {
-		if syscall.Errno(-1*retCode) == syscall.EOPNOTSUPP {
+		if errRc(retCode) == syscall.EOPNOTSUPP {
 			return fmt.Errorf("API level operations are not supported")
 		}
 
@@ -265,6 +332,10 @@ func filterFinalizer(f *ScmpFilter) {
 	f.Release()
 }
 
+func errRc(rc C.int) error {
+	return syscall.Errno(-1 * rc)
+}
+
 // Get a raw filter attribute
 func (f *ScmpFilter) getFilterAttr(attr scmpFilterAttr) (C.uint32_t, error) {
 	f.lock.Lock()
@@ -278,7 +349,7 @@ func (f *ScmpFilter) getFilterAttr(attr scmpFilterAttr) (C.uint32_t, error) {
 
 	retCode := C.seccomp_attr_get(f.filterCtx, attr.toNative(), &attribute)
 	if retCode != 0 {
-		return 0x0, syscall.Errno(-1 * retCode)
+		return 0x0, errRc(retCode)
 	}
 
 	return attribute, nil
@@ -295,7 +366,7 @@ func (f *ScmpFilter) setFilterAttr(attr scmpFilterAttr, value C.uint32_t) error 
 
 	retCode := C.seccomp_attr_set(f.filterCtx, attr.toNative(), value)
 	if retCode != 0 {
-		return syscall.Errno(-1 * retCode)
+		return errRc(retCode)
 	}
 
 	return nil
@@ -316,14 +387,17 @@ func (f *ScmpFilter) addRuleWrapper(call ScmpSyscall, action ScmpAction, exact b
 		retCode = C.seccomp_rule_add_array(f.filterCtx, action.toNative(), C.int(call), length, cond)
 	}
 
-	if syscall.Errno(-1*retCode) == syscall.EFAULT {
-		return fmt.Errorf("unrecognized syscall %#x", int32(call))
-	} else if syscall.Errno(-1*retCode) == syscall.EPERM {
-		return fmt.Errorf("requested action matches default action of filter")
-	} else if syscall.Errno(-1*retCode) == syscall.EINVAL {
-		return fmt.Errorf("two checks on same syscall argument")
-	} else if retCode != 0 {
-		return syscall.Errno(-1 * retCode)
+	if retCode != 0 {
+		switch e := errRc(retCode); e {
+		case syscall.EFAULT:
+			return fmt.Errorf("unrecognized syscall %#x", int32(call))
+		case syscall.EPERM:
+			return fmt.Errorf("requested action matches default action of filter")
+		case syscall.EINVAL:
+			return fmt.Errorf("two checks on same syscall argument")
+		default:
+			return e
+		}
 	}
 
 	return nil
@@ -517,6 +591,10 @@ func actionFromNative(a C.uint32_t) (ScmpAction, error) {
 	switch a & 0xFFFF0000 {
 	case C.C_ACT_KILL:
 		return ActKill, nil
+	case C.C_ACT_KILL_PROCESS:
+		return ActKillProcess, nil
+	case C.C_ACT_KILL_THREAD:
+		return ActKillThread, nil
 	case C.C_ACT_TRAP:
 		return ActTrap, nil
 	case C.C_ACT_ERRNO:
@@ -527,6 +605,8 @@ func actionFromNative(a C.uint32_t) (ScmpAction, error) {
 		return ActLog, nil
 	case C.C_ACT_ALLOW:
 		return ActAllow, nil
+	case C.C_ACT_NOTIFY:
+		return ActNotify, nil
 	default:
 		return 0x0, fmt.Errorf("unrecognized action %#x", uint32(a))
 	}
@@ -537,6 +617,10 @@ func (a ScmpAction) toNative() C.uint32_t {
 	switch a & 0xFFFF {
 	case ActKill:
 		return C.C_ACT_KILL
+	case ActKillProcess:
+		return C.C_ACT_KILL_PROCESS
+	case ActKillThread:
+		return C.C_ACT_KILL_THREAD
 	case ActTrap:
 		return C.C_ACT_TRAP
 	case ActErrno:
@@ -547,6 +631,8 @@ func (a ScmpAction) toNative() C.uint32_t {
 		return C.C_ACT_LOG
 	case ActAllow:
 		return C.C_ACT_ALLOW
+	case ActNotify:
+		return C.C_ACT_NOTIFY
 	default:
 		return 0x0
 	}
@@ -568,4 +654,128 @@ func (a scmpFilterAttr) toNative() uint32 {
 	default:
 		return 0x0
 	}
+}
+
+func (a ScmpSyscall) toNative() C.uint32_t {
+	return C.uint32_t(a)
+}
+
+func syscallFromNative(a C.int) ScmpSyscall {
+	return ScmpSyscall(a)
+}
+
+func notifReqFromNative(req *C.struct_seccomp_notif) (*ScmpNotifReq, error) {
+	scmpArgs := make([]uint64, 6)
+	for i := 0; i < len(scmpArgs); i++ {
+		scmpArgs[i] = uint64(req.data.args[i])
+	}
+
+	arch, err := archFromNative(req.data.arch)
+	if err != nil {
+		return nil, err
+	}
+
+	scmpData := ScmpNotifData{
+		Syscall:      syscallFromNative(req.data.nr),
+		Arch:         arch,
+		InstrPointer: uint64(req.data.instruction_pointer),
+		Args:         scmpArgs,
+	}
+
+	scmpReq := &ScmpNotifReq{
+		ID:    uint64(req.id),
+		Pid:   uint32(req.pid),
+		Flags: uint32(req.flags),
+		Data:  scmpData,
+	}
+
+	return scmpReq, nil
+}
+
+func (scmpResp *ScmpNotifResp) toNative(resp *C.struct_seccomp_notif_resp) {
+	resp.id = C.__u64(scmpResp.ID)
+	resp.val = C.__s64(scmpResp.Val)
+	resp.error = (C.__s32(scmpResp.Error) * -1) // kernel requires a negated value
+	resp.flags = C.__u32(scmpResp.Flags)
+}
+
+// Userspace Notification API
+// Calls to C.seccomp_notify* hidden from seccomp.go
+
+func (f *ScmpFilter) getNotifFd() (ScmpFd, error) {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+
+	if !f.valid {
+		return -1, errBadFilter
+	}
+
+	if apiLevel < 5 {
+		return -1, fmt.Errorf("seccomp notification requires API level >= 5; current level = %d", apiLevel)
+	}
+
+	fd := C.seccomp_notify_fd(f.filterCtx)
+
+	return ScmpFd(fd), nil
+}
+
+func notifReceive(fd ScmpFd) (*ScmpNotifReq, error) {
+	var req *C.struct_seccomp_notif
+	var resp *C.struct_seccomp_notif_resp
+
+	if apiLevel < 5 {
+		return nil, fmt.Errorf("seccomp notification requires API level >= 5; current level = %d", apiLevel)
+	}
+
+	// we only use the request here; the response is unused
+	if retCode := C.seccomp_notify_alloc(&req, &resp); retCode != 0 {
+		return nil, errRc(retCode)
+	}
+
+	defer func() {
+		C.seccomp_notify_free(req, resp)
+	}()
+
+	if retCode := C.seccomp_notify_receive(C.int(fd), req); retCode != 0 {
+		return nil, errRc(retCode)
+	}
+
+	return notifReqFromNative(req)
+}
+
+func notifRespond(fd ScmpFd, scmpResp *ScmpNotifResp) error {
+	var req *C.struct_seccomp_notif
+	var resp *C.struct_seccomp_notif_resp
+
+	if apiLevel < 5 {
+		return fmt.Errorf("seccomp notification requires API level >= 5; current level = %d", apiLevel)
+	}
+
+	// we only use the reponse here; the request is discarded
+	if retCode := C.seccomp_notify_alloc(&req, &resp); retCode != 0 {
+		return errRc(retCode)
+	}
+
+	defer func() {
+		C.seccomp_notify_free(req, resp)
+	}()
+
+	scmpResp.toNative(resp)
+
+	if retCode := C.seccomp_notify_respond(C.int(fd), resp); retCode != 0 {
+		return errRc(retCode)
+	}
+
+	return nil
+}
+
+func notifIDValid(fd ScmpFd, id uint64) error {
+	if apiLevel < 5 {
+		return fmt.Errorf("seccomp notification requires API level >= 5; current level = %d", apiLevel)
+	}
+
+	if retCode := C.seccomp_notify_id_valid(C.int(fd), C.uint64_t(id)); retCode != 0 {
+		return errRc(retCode)
+	}
+	return nil
 }

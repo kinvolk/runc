@@ -25,3 +25,7 @@ require (
 	github.com/willf/bitset v1.1.11
 	golang.org/x/sys v0.0.0-20201107080550-4d91cf3a1aaf
 )
+
+replace github.com/seccomp/libseccomp-golang => github.com/kinvolk/libseccomp-golang v0.9.2-0.20201015103602-d8c27e1992d8
+
+replace github.com/opencontainers/runtime-spec => github.com/kinvolk/runtime-spec v1.0.2-0.20201110183032-944de419591c

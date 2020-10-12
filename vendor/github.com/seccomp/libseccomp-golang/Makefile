@@ -19,7 +19,7 @@ vet:
 	go vet -v
 
 test:
-	go test -v
+	go test -v -timeout 10s
 
 lint:
 	@$(if $(shell which golint),true,$(error "install golint and include it in your PATH"))
