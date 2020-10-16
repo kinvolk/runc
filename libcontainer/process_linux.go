@@ -161,6 +161,35 @@ func (p *setnsProcess) start() (retErr error) {
 		case procHooks:
 			// This shouldn't happen.
 			panic("unexpected procHooks in setns")
+		case procSeccomp:
+			// receive seccomp-fd
+			pidfd, _, _ := syscall.Syscall(434 /* syscall.SYS_PIDFD_OPEN */, uintptr(p.pid()), 0, 0)
+			seccompFd, _, _ := syscall.Syscall(438 /* syscall.SYS_PIDFD_GETFD */, pidfd, uintptr(sync.Fd), 0)
+
+			defer func() {
+				syscall.Close(int(pidfd))
+				syscall.Close(int(seccompFd))
+			}()
+
+			if p.config.Config.Hooks != nil {
+				// TODO: get the proper data
+				s := &specs.State{}
+				// initProcessStartTime hasn't been set yet.
+				s.Pid = p.cmd.Process.Pid
+				s.Status = specs.StateCreating
+				s.SeccompFd = int(seccompFd)
+				hooks := p.config.Config.Hooks
+
+				if err := hooks[configs.SendSeccompFd].RunHooks(s); err != nil {
+					return err
+				}
+			}
+
+			// Sync with child.
+			if err := writeSync(p.messageSockPair.parent, procSeccompDone); err != nil {
+				return newSystemErrorWithCause(err, "writing syncT 'SeccompDone'")
+			}
+			return nil
 		default:
 			return newSystemError(errors.New("invalid JSON payload from child"))
 		}

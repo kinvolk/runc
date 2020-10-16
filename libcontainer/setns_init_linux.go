@@ -68,8 +68,14 @@ func (l *linuxSetnsInit) Init() error {
 	// do this before dropping capabilities; otherwise do it as late as possible
 	// just before execve so as few syscalls take place after it as possible.
 	if l.config.Config.Seccomp != nil && !l.config.NoNewPrivileges {
-		if _, err := seccomp.InitSeccomp(l.config.Config.Seccomp); err != nil {
+		if seccompFd, err := seccomp.InitSeccomp(l.config.Config.Seccomp); err != nil {
 			return err
+		} else {
+			if seccompFd != -1 {
+				if err := syncParentSeccompHooks(l.pipe, int(seccompFd)); err != nil {
+					return errors.Wrap(err, "seccomp hooks")
+				}
+			}
 		}
 	}
 	if err := finalizeNamespace(l.config); err != nil {
