@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install libseccomp-dev
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v2
         with:
