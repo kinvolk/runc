@@ -161,7 +161,7 @@ func TestCommandHookRun(t *testing.T) {
 		Pid:     1,
 		Bundle:  "/bundle",
 	}
-	timeout := time.Second
+	timeout := 10 * time.Second
 
 	cmdHook := configs.NewCommandHook(configs.Command{
 		Path:    os.Args[0],
@@ -185,7 +185,7 @@ func TestCommandHookRunTimeout(t *testing.T) {
 		Pid:     1,
 		Bundle:  "/bundle",
 	}
-	timeout := (10 * time.Millisecond)
+	timeout := 10 * time.Millisecond
 
 	cmdHook := configs.NewCommandHook(configs.Command{
 		Path:    os.Args[0],
@@ -203,7 +203,6 @@ func TestCommandHookRunTimeout(t *testing.T) {
 
 func TestHelperProcess(*testing.T) {
 	fmt.Println("Helper Process")
-	os.Exit(0)
 }
 func TestHelperProcessWithTimeout(*testing.T) {
 	time.Sleep(time.Second)
