@@ -185,6 +185,20 @@ func (l *linuxStandardInit) Init() error {
 	if err != nil {
 		return err
 	}
+	// Set seccomp as close to execve as possible, so as few syscalls take
+	// place afterward (reducing the amount of syscalls that users need to
+	// enable in their seccomp profiles).
+	if l.config.Config.Seccomp != nil && l.config.NoNewPrivileges {
+		if seccompFd, err := seccomp.InitSeccomp(l.config.Config.Seccomp); err != nil {
+			return newSystemErrorWithCause(err, "init seccomp")
+		} else {
+			if seccompFd != -1 {
+				if err := syncParentSeccompHooks(l.pipe, int(seccompFd)); err != nil {
+					return errors.Wrap(err, "seccomp hooks")
+				}
+			}
+		}
+	}
 	// Close the pipe to signal that we have completed our init.
 	l.pipe.Close()
 	// Wait for the FIFO to be opened on the other side before exec-ing the
@@ -205,20 +219,6 @@ func (l *linuxStandardInit) Init() error {
 	// since been resolved.
 	// https://github.com/torvalds/linux/blob/v4.9/fs/exec.c#L1290-L1318
 	unix.Close(l.fifoFd)
-	// Set seccomp as close to execve as possible, so as few syscalls take
-	// place afterward (reducing the amount of syscalls that users need to
-	// enable in their seccomp profiles).
-	if l.config.Config.Seccomp != nil && l.config.NoNewPrivileges {
-		if seccompFd, err := seccomp.InitSeccomp(l.config.Config.Seccomp); err != nil {
-			return newSystemErrorWithCause(err, "init seccomp")
-		} else {
-			if seccompFd != -1 {
-				if err := syncParentSeccompHooks(l.pipe, int(seccompFd)); err != nil {
-					return errors.Wrap(err, "seccomp hooks")
-				}
-			}
-		}
-	}
 
 	s := l.config.SpecState
 	s.Pid = unix.Getpid()
