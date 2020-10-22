@@ -76,7 +76,7 @@ func TestMarshalHooks(t *testing.T) {
 
 	// Note Marshal seems to output fields in alphabetical order
 	hookCmdJson := `[{"path":"/var/vcap/hooks/hook","args":["--pid=123"],"env":["FOO=BAR"],"dir":"/var/vcap","timeout":1000000000}]`
-	h := fmt.Sprintf(`{"createContainer":%[1]s,"createRuntime":%[1]s,"poststart":%[1]s,"poststop":%[1]s,"prestart":%[1]s,"startContainer":%[1]s}`, hookCmdJson)
+	h := fmt.Sprintf(`{"createContainer":%[1]s,"createRuntime":%[1]s,"poststart":%[1]s,"poststop":%[1]s,"prestart":%[1]s,"sendSeccompFd":%[1]s,"startContainer":%[1]s}`, hookCmdJson)
 	if string(hooks) != h {
 		t.Errorf("Expected hooks %s to equal %s", string(hooks), h)
 	}
