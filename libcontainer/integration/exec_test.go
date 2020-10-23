@@ -1284,7 +1284,7 @@ func TestHook(t *testing.T) {
 
 	config.Hooks = configs.Hooks{
 		configs.Prestart: configs.HookList{
-			configs.NewFunctionHook(func(i interface{}, extraFile []*os.File) error {
+			configs.NewFunctionHook(func(i interface{}) error {
 				s, ok := i.(*specs.State)
 				if !ok {
 					t.Fatalf("Expected type specs.State, got %T", i)
@@ -1296,7 +1296,7 @@ func TestHook(t *testing.T) {
 			}),
 		},
 		configs.CreateRuntime: configs.HookList{
-			configs.NewFunctionHook(func(i interface{}, extraFile []*os.File) error {
+			configs.NewFunctionHook(func(i interface{}) error {
 				s, ok := i.(*specs.State)
 				if !ok {
 					t.Fatalf("Expected type specs.State, got %T", i)
@@ -1320,7 +1320,7 @@ func TestHook(t *testing.T) {
 			}),
 		},
 		configs.Poststart: configs.HookList{
-			configs.NewFunctionHook(func(i interface{}, extraFile []*os.File) error {
+			configs.NewFunctionHook(func(i interface{}) error {
 				s, ok := i.(*specs.State)
 				if !ok {
 					t.Fatalf("Expected type specs.State, got %T", i)
@@ -1332,7 +1332,7 @@ func TestHook(t *testing.T) {
 			}),
 		},
 		configs.Poststop: configs.HookList{
-			configs.NewFunctionHook(func(i interface{}, extraFile []*os.File) error {
+			configs.NewFunctionHook(func(i interface{}) error {
 				s, ok := i.(*specs.State)
 				if !ok {
 					t.Fatalf("Expected type specs.State, got %T", i)

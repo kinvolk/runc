@@ -224,6 +224,6 @@ func marshal(path string, v interface{}) error {
 
 type unserializableHook struct{}
 
-func (unserializableHook) Run(interface{}, []*os.File) error {
+func (unserializableHook) Run(interface{}) error {
 	return nil
 }

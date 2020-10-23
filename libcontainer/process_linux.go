@@ -191,8 +191,7 @@ func (p *setnsProcess) start() (retErr error) {
 				seccompState.State = *s
 
 				hooks := p.config.Config.Hooks
-				extraFiles := []*os.File{os.NewFile(uintptr(seccompFd), "seccomp-fd")}
-				if err := hooks[configs.SendSeccompFd].RunHooks(seccompState, extraFiles); err != nil {
+				if err := hooks[configs.SendSeccompFd].RunHooks(seccompState); err != nil {
 					return err
 				}
 			}
@@ -460,8 +459,7 @@ func (p *initProcess) start() (retErr error) {
 				seccompState.State = *s
 
 				hooks := p.config.Config.Hooks
-				extraFiles := []*os.File{os.NewFile(uintptr(seccompFd), "seccomp-fd")}
-				if err := hooks[configs.SendSeccompFd].RunHooks(seccompState, extraFiles); err != nil {
+				if err := hooks[configs.SendSeccompFd].RunHooks(seccompState); err != nil {
 					return err
 				}
 			}
@@ -499,10 +497,10 @@ func (p *initProcess) start() (retErr error) {
 					s.Status = specs.StateCreating
 					hooks := p.config.Config.Hooks
 
-					if err := hooks[configs.Prestart].RunHooks(s, nil); err != nil {
+					if err := hooks[configs.Prestart].RunHooks(s); err != nil {
 						return err
 					}
-					if err := hooks[configs.CreateRuntime].RunHooks(s, nil); err != nil {
+					if err := hooks[configs.CreateRuntime].RunHooks(s); err != nil {
 						return err
 					}
 				}
@@ -554,10 +552,10 @@ func (p *initProcess) start() (retErr error) {
 				s.Status = specs.StateCreating
 				hooks := p.config.Config.Hooks
 
-				if err := hooks[configs.Prestart].RunHooks(s, nil); err != nil {
+				if err := hooks[configs.Prestart].RunHooks(s); err != nil {
 					return err
 				}
-				if err := hooks[configs.CreateRuntime].RunHooks(s, nil); err != nil {
+				if err := hooks[configs.CreateRuntime].RunHooks(s); err != nil {
 					return err
 				}
 			}

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -259,9 +260,9 @@ type Capabilities struct {
 	Ambient []string
 }
 
-func (hooks HookList) RunHooks(state interface{}, extraFiles []*os.File) error {
+func (hooks HookList) RunHooks(state interface{}) error {
 	for i, h := range hooks {
-		if err := h.Run(state, extraFiles); err != nil {
+		if err := h.Run(state); err != nil {
 			return errors.Wrapf(err, "Running hook #%d:", i)
 		}
 	}
@@ -318,22 +319,22 @@ func (hooks *Hooks) MarshalJSON() ([]byte, error) {
 
 type Hook interface {
 	// Run executes the hook with the provided state.
-	Run(interface{}, []*os.File) error
+	Run(interface{}) error
 }
 
 // NewFunctionHook will call the provided function when the hook is run.
-func NewFunctionHook(f func(interface{}, []*os.File) error) FuncHook {
+func NewFunctionHook(f func(interface{}) error) FuncHook {
 	return FuncHook{
 		run: f,
 	}
 }
 
 type FuncHook struct {
-	run func(interface{}, []*os.File) error
+	run func(interface{}) error
 }
 
-func (f FuncHook) Run(s interface{}, extraFiles []*os.File) error {
-	return f.run(s, extraFiles)
+func (f FuncHook) Run(s interface{}) error {
+	return f.run(s)
 }
 
 type Command struct {
@@ -355,23 +356,28 @@ type CommandHook struct {
 	Command
 }
 
-func (c Command) Run(s interface{}, extraFiles []*os.File) error {
+func (c Command) Run(s interface{}) error {
+	var extraFiles []*os.File
+	if seccompState, ok := s.(*specs.SeccompState); ok {
+		extraFiles = []*os.File{os.NewFile(uintptr(seccompState.SeccompFd), "seccomp-fd")}
+		// exec.Cmd.ExtraFiles are file descriptors starting from 3.
+		seccompState.SeccompFd = 3
+	}
 	b, err := json.Marshal(s)
 	if err != nil {
 		return err
 	}
 	var stdout, stderr bytes.Buffer
 	cmd := exec.Cmd{
-		Path:   c.Path,
-		Args:   c.Args,
-		Env:    c.Env,
-		Stdin:  bytes.NewReader(b),
-		Stdout: &stdout,
-		Stderr: &stderr,
+		Path:       c.Path,
+		Args:       c.Args,
+		Env:        c.Env,
+		Stdin:      bytes.NewReader(b),
+		Stdout:     &stdout,
+		Stderr:     &stderr,
+		ExtraFiles: extraFiles,
 	}
-	if len(extraFiles) != 0 {
-		cmd.ExtraFiles = extraFiles
-	}
+
 	if err := cmd.Start(); err != nil {
 		return err
 	}

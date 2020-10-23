@@ -44,12 +44,12 @@ func handleNewMessage(sockfd int) (*os.File, error) {
 	stateBuf = stateBuf[:n]
 	oob = oob[:oobn]
 
-	ociState := &specs.State{}
-	err = json.Unmarshal(stateBuf, ociState)
+	seccompState := &specs.SeccompState{}
+	err = json.Unmarshal(stateBuf, seccompState)
 	if err != nil {
 		return nil, fmt.Errorf("cannot parse OCI state: %v\n", err)
 	}
-	fmt.Printf("%v\n", ociState)
+	fmt.Printf("%v\n", seccompState)
 
 	scms, err := unix.ParseSocketControlMessage(oob)
 	if err != nil {

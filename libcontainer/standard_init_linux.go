@@ -223,7 +223,7 @@ func (l *linuxStandardInit) Init() error {
 	s := l.config.SpecState
 	s.Pid = unix.Getpid()
 	s.Status = specs.StateCreated
-	if err := l.config.Config.Hooks[configs.StartContainer].RunHooks(s, nil); err != nil {
+	if err := l.config.Config.Hooks[configs.StartContainer].RunHooks(s); err != nil {
 		return err
 	}
 

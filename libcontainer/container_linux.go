@@ -374,7 +374,7 @@ func (c *linuxContainer) start(process *Process) error {
 				return err
 			}
 
-			if err := c.config.Hooks[configs.Poststart].RunHooks(s, nil); err != nil {
+			if err := c.config.Hooks[configs.Poststart].RunHooks(s); err != nil {
 				if err := ignoreTerminateErrors(parent.terminate()); err != nil {
 					logrus.Warn(errorsf.Wrapf(err, "Running Poststart hook"))
 				}
@@ -1671,10 +1671,10 @@ func (c *linuxContainer) criuNotifications(resp *criurpc.CriuResp, process *Proc
 			}
 			s.Pid = int(notify.GetPid())
 
-			if err := c.config.Hooks[configs.Prestart].RunHooks(s, nil); err != nil {
+			if err := c.config.Hooks[configs.Prestart].RunHooks(s); err != nil {
 				return err
 			}
-			if err := c.config.Hooks[configs.CreateRuntime].RunHooks(s, nil); err != nil {
+			if err := c.config.Hooks[configs.CreateRuntime].RunHooks(s); err != nil {
 				return err
 			}
 		}

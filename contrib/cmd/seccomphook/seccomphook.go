@@ -38,8 +38,8 @@ func main() {
 		panic(fmt.Errorf("cannot read stdin: %v\n", err))
 	}
 
-	ociState := &specs.State{}
-	err = json.Unmarshal(stateBuf, ociState)
+	seccompState := &specs.SeccompState{}
+	err = json.Unmarshal(stateBuf, seccompState)
 	if err != nil {
 		panic(fmt.Errorf("cannot parse OCI state: %v\n", err))
 	}
