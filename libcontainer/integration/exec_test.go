@@ -1373,7 +1373,7 @@ func TestHook(t *testing.T) {
 		t.Fatalf("container destroy %s", err)
 	}
 
-	for _, hook := range []string{"prestart", "createRuntime", "poststart"} {
+	for _, hook := range hookFiles {
 		fi, err := os.Stat(filepath.Join(rootfs, hook))
 		if err == nil || !os.IsNotExist(err) {
 			t.Fatalf("expected file '%s to not exists, but it does", fi.Name())
