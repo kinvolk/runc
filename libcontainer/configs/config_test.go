@@ -3,7 +3,6 @@ package configs_test
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -161,14 +160,46 @@ func TestCommandHookRun(t *testing.T) {
 		Pid:     1,
 		Bundle:  "/bundle",
 	}
-	timeout := 10 * time.Second
+
+	stateJson, errJ := json.Marshal(state)
+	if errJ != nil {
+		t.Fatal(errJ)
+	}
+
+	verifyCommandTemplate := `
+	if [ $0 != cmdname ]; then
+		echo "Bad value for \$0. Expected 'cmdname', found '$0'"
+		exit 1
+	fi
+
+	if [ $1 != testarg ]; then
+		echo "Bad value for \$1. Expected 'testarg', found '$1'"
+		exit 1
+	fi
+
+	if [ -z $FOO ] || [ $FOO != BAR ]; then
+		echo "Bad value for FOO. Expected 'BAR', found '$FOO'"
+		exit 1
+	fi
+
+	expectedJson=%q
+
+	read JSON
+	if [ $JSON != $expectedJson ]; then
+		echo "Bad JSON received. Expected '$expectedJson', found '$JSON'"
+		exit 1
+	fi
+
+	exit 0
+	`
+
+	verifyCommand := fmt.Sprintf(verifyCommandTemplate, stateJson)
 
 	cmdHook := configs.NewCommandHook(configs.Command{
-		Path:    os.Args[0],
-		Args:    []string{os.Args[0], "-test.run=TestHelperProcess"},
+		Path:    "/bin/sh",
+		Args:    []string{"/bin/sh", "-c", verifyCommand, "cmdname", "testarg"},
 		Env:     []string{"FOO=BAR"},
 		Dir:     "/",
-		Timeout: &timeout,
 	})
 
 	err := cmdHook.Run(state)
@@ -185,13 +216,11 @@ func TestCommandHookRunTimeout(t *testing.T) {
 		Pid:     1,
 		Bundle:  "/bundle",
 	}
-	timeout := 10 * time.Millisecond
+	timeout := 100 * time.Millisecond
 
 	cmdHook := configs.NewCommandHook(configs.Command{
-		Path:    os.Args[0],
-		Args:    []string{os.Args[0], "-test.run=TestHelperProcessWithTimeout"},
-		Env:     []string{"FOO=BAR"},
-		Dir:     "/",
+		Path:    "/bin/sh",
+		Args:    []string{"/bin/sh", "-c", "sleep 1"},
 		Timeout: &timeout,
 	})
 
@@ -199,11 +228,4 @@ func TestCommandHookRunTimeout(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error to occur but it was nil")
 	}
-}
-
-func TestHelperProcess(*testing.T) {
-	fmt.Println("Helper Process")
-}
-func TestHelperProcessWithTimeout(*testing.T) {
-	time.Sleep(time.Second)
 }
