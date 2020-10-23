@@ -116,7 +116,7 @@ func TestMarshalUnmarshalHooks(t *testing.T) {
 }
 
 func TestMarshalHooksWithUnexpectedType(t *testing.T) {
-	fHook := configs.NewFunctionHook(func(*specs.State) error {
+	fHook := configs.NewFunctionHook(func(interface{}, []*os.File) error {
 		return nil
 	})
 	hook := configs.Hooks{
@@ -142,14 +142,18 @@ func TestFuncHookRun(t *testing.T) {
 		Bundle:  "/bundle",
 	}
 
-	fHook := configs.NewFunctionHook(func(s *specs.State) error {
+	fHook := configs.NewFunctionHook(func(i interface{}, extraFiles []*os.File) error {
+		s, ok := i.(*specs.State)
+		if !ok {
+			t.Fatalf("Expected type specs.State, got %T", i)
+		}
 		if !reflect.DeepEqual(state, s) {
 			t.Errorf("Expected state %+v to equal %+v", state, s)
 		}
 		return nil
 	})
 
-	fHook.Run(state)
+	fHook.Run(state, nil)
 }
 
 func TestCommandHookRun(t *testing.T) {
@@ -202,7 +206,7 @@ func TestCommandHookRun(t *testing.T) {
 		Dir:     "/",
 	})
 
-	err := cmdHook.Run(state)
+	err := cmdHook.Run(state, nil)
 	if err != nil {
 		t.Errorf(fmt.Sprintf("Expected error to not occur but it was %+v", err))
 	}
@@ -224,7 +228,7 @@ func TestCommandHookRunTimeout(t *testing.T) {
 		Timeout: &timeout,
 	})
 
-	err := cmdHook.Run(state)
+	err := cmdHook.Run(state, nil)
 	if err == nil {
 		t.Error("Expected error to occur but it was nil")
 	}

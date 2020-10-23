@@ -1284,7 +1284,11 @@ func TestHook(t *testing.T) {
 
 	config.Hooks = configs.Hooks{
 		configs.Prestart: configs.HookList{
-			configs.NewFunctionHook(func(s *specs.State) error {
+			configs.NewFunctionHook(func(i interface{}, extraFile []*os.File) error {
+				s, ok := i.(*specs.State)
+				if !ok {
+					t.Fatalf("Expected type specs.State, got %T", i)
+				}
 				if s.Bundle != expectedBundle {
 					t.Fatalf("Expected prestart hook bundlePath '%s'; got '%s'", expectedBundle, s.Bundle)
 				}
@@ -1292,7 +1296,11 @@ func TestHook(t *testing.T) {
 			}),
 		},
 		configs.CreateRuntime: configs.HookList{
-			configs.NewFunctionHook(func(s *specs.State) error {
+			configs.NewFunctionHook(func(i interface{}, extraFile []*os.File) error {
+				s, ok := i.(*specs.State)
+				if !ok {
+					t.Fatalf("Expected type specs.State, got %T", i)
+				}
 				if s.Bundle != expectedBundle {
 					t.Fatalf("Expected createRuntime hook bundlePath '%s'; got '%s'", expectedBundle, s.Bundle)
 				}
@@ -1312,7 +1320,11 @@ func TestHook(t *testing.T) {
 			}),
 		},
 		configs.Poststart: configs.HookList{
-			configs.NewFunctionHook(func(s *specs.State) error {
+			configs.NewFunctionHook(func(i interface{}, extraFile []*os.File) error {
+				s, ok := i.(*specs.State)
+				if !ok {
+					t.Fatalf("Expected type specs.State, got %T", i)
+				}
 				if s.Bundle != expectedBundle {
 					t.Fatalf("Expected poststart hook bundlePath '%s'; got '%s'", expectedBundle, s.Bundle)
 				}
@@ -1320,7 +1332,11 @@ func TestHook(t *testing.T) {
 			}),
 		},
 		configs.Poststop: configs.HookList{
-			configs.NewFunctionHook(func(s *specs.State) error {
+			configs.NewFunctionHook(func(i interface{}, extraFile []*os.File) error {
+				s, ok := i.(*specs.State)
+				if !ok {
+					t.Fatalf("Expected type specs.State, got %T", i)
+				}
 				if s.Bundle != expectedBundle {
 					t.Fatalf("Expected poststop hook bundlePath '%s'; got '%s'", expectedBundle, s.Bundle)
 				}

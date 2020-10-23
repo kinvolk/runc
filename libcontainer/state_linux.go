@@ -73,7 +73,7 @@ func runPoststopHooks(c *linuxContainer) error {
 	}
 	s.Status = specs.StateStopped
 
-	if err := hooks[configs.Poststop].RunHooks(s); err != nil {
+	if err := hooks[configs.Poststop].RunHooks(s, nil); err != nil {
 		return err
 	}
 

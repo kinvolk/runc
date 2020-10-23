@@ -103,7 +103,7 @@ func prepareRootfs(pipe io.ReadWriter, iConfig *initConfig) (err error) {
 	s := iConfig.SpecState
 	s.Pid = unix.Getpid()
 	s.Status = specs.StateCreating
-	if err := iConfig.Config.Hooks[configs.CreateContainer].RunHooks(s); err != nil {
+	if err := iConfig.Config.Hooks[configs.CreateContainer].RunHooks(s, nil); err != nil {
 		return err
 	}
 

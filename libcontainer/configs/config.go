@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -260,9 +259,9 @@ type Capabilities struct {
 	Ambient []string
 }
 
-func (hooks HookList) RunHooks(state *specs.State) error {
+func (hooks HookList) RunHooks(state interface{}, extraFiles []*os.File) error {
 	for i, h := range hooks {
-		if err := h.Run(state); err != nil {
+		if err := h.Run(state, extraFiles); err != nil {
 			return errors.Wrapf(err, "Running hook #%d:", i)
 		}
 	}
@@ -319,22 +318,22 @@ func (hooks *Hooks) MarshalJSON() ([]byte, error) {
 
 type Hook interface {
 	// Run executes the hook with the provided state.
-	Run(*specs.State) error
+	Run(interface{}, []*os.File) error
 }
 
 // NewFunctionHook will call the provided function when the hook is run.
-func NewFunctionHook(f func(*specs.State) error) FuncHook {
+func NewFunctionHook(f func(interface{}, []*os.File) error) FuncHook {
 	return FuncHook{
 		run: f,
 	}
 }
 
 type FuncHook struct {
-	run func(*specs.State) error
+	run func(interface{}, []*os.File) error
 }
 
-func (f FuncHook) Run(s *specs.State) error {
-	return f.run(s)
+func (f FuncHook) Run(s interface{}, extraFiles []*os.File) error {
+	return f.run(s, extraFiles)
 }
 
 type Command struct {
@@ -356,7 +355,7 @@ type CommandHook struct {
 	Command
 }
 
-func (c Command) Run(s *specs.State) error {
+func (c Command) Run(s interface{}, extraFiles []*os.File) error {
 	b, err := json.Marshal(s)
 	if err != nil {
 		return err
@@ -370,16 +369,8 @@ func (c Command) Run(s *specs.State) error {
 		Stdout: &stdout,
 		Stderr: &stderr,
 	}
-	if s.SeccompFd != 0 {
-		cmd.ExtraFiles = []*os.File{os.NewFile(uintptr(s.SeccompFd), "seccomp-fd")}
-		/*
-			s.SeccompFd = 3
-			b, err := json.Marshal(s)
-			if err != nil {
-				return err
-			}
-			cmd.Stdin = bytes.NewReader(b)
-		*/
+	if len(extraFiles) != 0 {
+		cmd.ExtraFiles = extraFiles
 	}
 	if err := cmd.Start(); err != nil {
 		return err
