@@ -27,4 +27,4 @@ require (
 
 replace github.com/seccomp/libseccomp-golang => github.com/kinvolk/libseccomp-golang v0.9.2-0.20201015103602-d8c27e1992d8
 
-replace github.com/opencontainers/runtime-spec => github.com/kinvolk/runtime-spec v1.0.2-0.20200929115330-9eec173bff54
+replace github.com/opencontainers/runtime-spec => github.com/kinvolk/runtime-spec v1.0.2-0.20201023152623-8aea7528c0af

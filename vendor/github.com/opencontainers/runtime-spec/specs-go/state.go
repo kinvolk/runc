@@ -18,7 +18,9 @@ const (
 	StateStopped ContainerState = "stopped"
 )
 
-// State holds information about the runtime state of the container.
+// State holds information about the runtime state of the container. The State
+// can be displayed when requested (query state operation); it is also passed
+// via stdin to many hooks.
 type State struct {
 	// Version is the version of the specification that is supported.
 	Version string `json:"ociVersion"`
@@ -32,6 +34,33 @@ type State struct {
 	Bundle string `json:"bundle"`
 	// Annotations are key values associated with the container.
 	Annotations map[string]string `json:"annotations,omitempty"`
+}
 
+type SeccompPhase string
+
+const (
+	// SeccompPhaseStart indicates that the seccomp filter is applied to
+	// the main process of the container during container start
+	SeccompPhaseStart SeccompPhase = "start"
+
+	// SeccompPhaseExec indicates that the seccomp filter is applied to a
+	// new process that entered the container while it's running
+	SeccompPhaseExec SeccompPhase = "exec"
+)
+
+type SeccompState struct {
+	// Version is the version of the specification that is supported.
+	Version string `json:"ociVersion"`
+	// Phase indicates whether this seccomp filter is applied during
+	// container start or on a process that enters the container later on
+	Phase SeccompPhase `json:"seccompPhase"`
+	// SeccompFd is the file descriptor for Seccomp User Notification
 	SeccompFd int `json:"seccompFd"`
+	// Pid is the process ID on which the seccomp filter is applied
+	Pid int `json:"pid,omitempty"`
+	// PidFd is a pidfd for the process on which the seccomp filter is
+	// applied
+	PidFd int `json:"pidFd,omitempty"`
+	// State of the container
+	State State `json:"state"`
 }
