@@ -200,10 +200,10 @@ func TestCommandHookRun(t *testing.T) {
 	verifyCommand := fmt.Sprintf(verifyCommandTemplate, stateJson)
 
 	cmdHook := configs.NewCommandHook(configs.Command{
-		Path:    "/bin/sh",
-		Args:    []string{"/bin/sh", "-c", verifyCommand, "cmdname", "testarg"},
-		Env:     []string{"FOO=BAR"},
-		Dir:     "/",
+		Path: "/bin/sh",
+		Args: []string{"/bin/sh", "-c", verifyCommand, "cmdname", "testarg"},
+		Env:  []string{"FOO=BAR"},
+		Dir:  "/",
 	})
 
 	err := cmdHook.Run(state)
