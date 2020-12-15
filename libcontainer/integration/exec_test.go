@@ -3,6 +3,7 @@ package integration
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -1836,5 +1837,122 @@ next_fd:
 	}
 	if count > 0 {
 		t.Fatalf("found %d extra fds after container.Run", count)
+	}
+}
+
+// Test that a container using user namespaces is able to bind mount a folder
+// that does not have permissions for group/others.
+func TestBindMountAndUser(t *testing.T) {
+	if _, err := os.Stat("/proc/self/ns/user"); errors.Is(err, os.ErrNotExist) {
+		t.Skip("userns is unsupported")
+	}
+
+	if testing.Short() {
+		return
+	}
+
+	temphost := t.TempDir()
+	dirhost := filepath.Join(temphost, "inaccessible", "dir")
+
+	err := os.MkdirAll(dirhost, 0o755)
+	ok(t, err)
+
+	err = ioutil.WriteFile(filepath.Join(dirhost, "foo.txt"), []byte("Hello"), 0o755)
+	ok(t, err)
+
+	// Make this dir inaccessible to "group,others".
+	err = os.Chmod(filepath.Join(temphost, "inaccessible"), 0o700)
+	ok(t, err)
+
+	config := newTemplateConfig(t, &tParam{
+		userns: true,
+	})
+
+	// Set HostID to 1000 to avoid DAC_OVERRIDE bypassing the purpose of this test.
+	config.UidMappings[0].HostID = 1000
+	config.GidMappings[0].HostID = 1000
+
+	// Set the owner of rootfs to the effective IDs in the host to avoid errors
+	// while creating the folders to perform the mounts.
+	err = os.Chown(config.Rootfs, 1000, 1000)
+	ok(t, err)
+
+	// Make the user in the userns can read the rootfs.
+	traversePath(t, config.Rootfs)
+
+	config.Mounts = append(config.Mounts, &configs.Mount{
+		Source:      dirhost,
+		Destination: "/tmp/mnt1cont",
+		Device:      "bind",
+		Flags:       unix.MS_BIND | unix.MS_REC,
+	})
+
+	container, err := newContainer(t, config)
+	ok(t, err)
+	defer container.Destroy() //nolint: errcheck
+
+	var stdout bytes.Buffer
+
+	pconfig := libcontainer.Process{
+		Cwd:    "/",
+		Args:   []string{"sh", "-c", "stat /tmp/mnt1cont/foo.txt"},
+		Env:    standardEnvironment,
+		Stdout: &stdout,
+		Init:   true,
+	}
+	err = container.Run(&pconfig)
+	ok(t, err)
+
+	waitProcess(&pconfig, t)
+}
+
+// traversePath gives read+execute permissions for all elements in the path
+// below "t.TempDir()/../../" and errors if elements in the path above it don't
+// already have read+exec permissions.
+// It calls t.Fatal() if tPath is not under t.TempDir()/../../ or if any error is
+// found.
+func traversePath(t *testing.T, tPath string) {
+	// t.TempDir() returns <base_tmp_dir>/a/b/. And a is created with
+	// permissions for the owner only, so we need to change permissions for
+	// all under t.TempDir()/../../.
+	tempBaseSlice := strings.Split(t.TempDir(), "/")
+	tempBase := strings.Join(tempBaseSlice[:len(tempBaseSlice)-2], "/")
+
+	if !strings.HasPrefix(tPath, tempBase) {
+		t.Fatalf("Path %q is not in the tempDir %q, can't safely change permissions for others to the path", tPath, tempBase)
+	}
+
+	var path string
+	tPaths := strings.Split(tPath, "/")
+	for _, p := range tPaths {
+		// When it starts with "/", the first element in the Split is an
+		// empty string (the elem before the first /). So, ignore empty
+		// elements.
+		if p == "" {
+			continue
+		}
+
+		path = path + "/" + p
+		stats, err := os.Stat(path)
+		ok(t, err)
+
+		if strings.HasPrefix(tempBase, path) {
+			// We can't safely change permissions if it is not below tempBase.
+			if stats.Mode()&0o5 == 0 {
+				t.Fatalf("Directory %q MUST have read+exec permissions for others", path)
+			}
+
+			// Don't do anything when path is not below tempBase.
+			continue
+		}
+
+		if stats.Mode()&0o5 != 0 {
+			continue
+		}
+
+		// Add read&exec permissions for others
+		perm := stats.Mode() | 0o5
+		err = os.Chmod(path, perm)
+		ok(t, err)
 	}
 }
