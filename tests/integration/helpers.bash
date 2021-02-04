@@ -8,6 +8,7 @@ INTEGRATION_ROOT=$(dirname "$(readlink -f "$BASH_SOURCE")")
 RUNC="${INTEGRATION_ROOT}/../../runc"
 RECVTTY="${INTEGRATION_ROOT}/../../contrib/cmd/recvtty/recvtty"
 GOPATH="$(mktemp -d --tmpdir runc-integration-gopath.XXXXXX)"
+SECCOMPAGENT="${INTEGRATION_ROOT}/../../contrib/cmd/seccompagent/seccompagent"
 
 # Test data path.
 TESTDATA="${INTEGRATION_ROOT}/testdata"
@@ -38,6 +39,9 @@ ROOT=$(mktemp -d "$BATS_TMPDIR/runc.XXXXXX")
 
 # Path to console socket.
 CONSOLE_SOCKET="$BATS_TMPDIR/console.sock"
+
+# Seccomp agent socket.
+SECCCOMP_AGENT_SOCKET="$BATS_TMPDIR/seccomp-agent.sock"
 
 # Check if we're in rootless mode.
 ROOTLESS=$(id -u)
@@ -476,6 +480,18 @@ function teardown_recvtty() {
 	rm -f "$CONSOLE_SOCKET"
 }
 
+function setup_seccompagent() {
+	("$SECCOMPAGENT" -socketfile="$SECCCOMP_AGENT_SOCKET" -pid-file "$BATS_TMPDIR/seccompagent.pid" &) &
+}
+
+function teardown_seccompagent() {
+	if [ -f "$BATS_TMPDIR/seccompagent.pid" ]; then
+		kill -9 $(cat "$BATS_TMPDIR/seccompagent.pid")
+	fi
+	rm -f "$BATS_TMPDIR/seccompagent.pid"
+	rm -f "$SECCCOMP_AGENT_SOCKET"
+}
+
 function setup_busybox() {
 	setup_recvtty
 	mkdir -p "$BUSYBOX_BUNDLE"/rootfs
@@ -547,4 +563,12 @@ function teardown_debian() {
 	teardown_recvtty
 	teardown_running_container test_debian
 	rm -f -r "$DEBIAN_BUNDLE"
+}
+
+function requires_kernel() {
+	MAJOR_REQUIRED=$(echo "$1" | cut -d. -f1)
+	MINOR_REQUIRED=$(echo "$1" | cut -d. -f2)
+	if [[ "$KERNEL_MAJOR" -lt $MAJOR_REQUIRED || ("$KERNEL_MAJOR" -eq $MAJOR_REQUIRED && "$KERNEL_MINOR" -lt $MINOR_REQUIRED) ]]; then
+		skip "requires kernel $1"
+	fi
 }
