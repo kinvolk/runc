@@ -15,6 +15,7 @@ RUN echo 'deb https://download.opensuse.org/repositories/devel:/tools:/criu/Debi
     && dpkg --add-architecture ppc64el \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
+        astyle \
         build-essential \
         criu \
         crossbuild-essential-arm64 \
@@ -24,29 +25,16 @@ RUN echo 'deb https://download.opensuse.org/repositories/devel:/tools:/criu/Debi
         curl \
         gawk \
         gcc \
+        golint \
+        gperf \
         iptables \
         jq \
         kmod \
-        libseccomp-dev \
-        libseccomp-dev:arm64 \
-        libseccomp-dev:armel \
-        libseccomp-dev:armhf \
-        libseccomp-dev:ppc64el \
-        libseccomp2 \
-        libaio-dev \
-        libcap-dev \
-        libnet-dev \
-        libnl-3-dev \
-        libprotobuf-c-dev \
-        libprotobuf-dev \
         pkg-config \
         python-minimal \
         skopeo \
         sudo \
         uidmap \
-        astyle \
-        golint \
-        gperf \
     && apt-get clean \
     && rm -rf /var/cache/apt /var/lib/apt/lists/* /etc/apt/sources.list.d/*.list
 
