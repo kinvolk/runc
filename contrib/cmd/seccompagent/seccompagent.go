@@ -55,8 +55,8 @@ struct _mydef_seccomp_notif_addfd {
 int replace_fd(__u64 id, int notify_fd, int fd) {
 	struct _mydef_seccomp_notif_addfd addfd = {
 		.id = id,
-		.flags = 0,
-		//.flags = SECCOMP_ADDFD_FLAG_SEND,
+		//.flags = 0,
+		.flags = SECCOMP_ADDFD_FLAG_SEND,
 		.srcfd = fd,
 		.newfd = 0,
 		.newfd_flags = 0,
@@ -231,6 +231,7 @@ func notifHandler(fd libseccomp.ScmpFd, metadata string) {
 
 				resp.Flags = 0 // do not continue with the syscall
 				unix.Close(fileFd)
+				continue
 			}
 			goto sendResponse
 		}
