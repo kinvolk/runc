@@ -10,9 +10,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
-	"strings"
 	"syscall"
-	"time"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
 	libseccomp "github.com/seccomp/libseccomp-golang"
@@ -57,9 +55,8 @@ struct _mydef_seccomp_notif_addfd {
 int replace_fd(__u64 id, int notify_fd, int fd) {
 	struct _mydef_seccomp_notif_addfd addfd = {
 		.id = id,
-		//.flags = 0,
-		//.flags = SECCOMP_ADDFD_FLAG_SETFD,
-		.flags = SECCOMP_ADDFD_FLAG_SEND,
+		.flags = 0,
+		//.flags = SECCOMP_ADDFD_FLAG_SEND,
 		.srcfd = fd,
 		.newfd = 0,
 		.newfd_flags = 0,
@@ -166,14 +163,6 @@ func readArgString(pid uint32, offset int64) (string, error) {
 	return string(s), nil
 }
 
-func runMkdirForContainer(pid uint32, fileName string, mode uint32, metadata string) error {
-	if strings.HasPrefix(fileName, "/") {
-		return unix.Mkdir(fmt.Sprintf("/proc/%d/root%s-%s", pid, fileName, metadata), mode)
-	}
-
-	return unix.Mkdir(fmt.Sprintf("/proc/%d/cwd/%s-%s", pid, fileName, metadata), mode)
-}
-
 func runOpenForContainer() int {
 	fd, err := syscall.Open("/tmp/devnull2", 0, 0)
 	if err != nil {
@@ -209,59 +198,41 @@ func notifHandler(fd libseccomp.ScmpFd, metadata string) {
 		// TOCTOU check
 		if err := libseccomp.NotifIDValid(fd, req.ID); err != nil {
 			logrus.Errorf("TOCTOU check failed: req.ID is no longer valid: %s", err)
-			resp.Error = int32(unix.ENOSYS)
-			resp.Val = ^uint64(0) // -1
-			goto sendResponse
+			//resp.Error = int32(unix.ENOSYS)
+			//resp.Val = ^uint64(0) // -1
+			continue
 		}
 
 		switch syscallName {
-		case "mkdir":
-			fileName, err := readArgString(req.Pid, int64(req.Data.Args[0]))
-			if err != nil {
-				logrus.Errorf("Cannot read argument: %s", err)
-				resp.Error = int32(unix.ENOSYS)
-				resp.Val = ^uint64(0) // -1
-				goto sendResponse
-			}
-
-			logrus.Debugf("mkdir: %q\n", fileName)
-
-			err = runMkdirForContainer(req.Pid, fileName, uint32(req.Data.Args[1]), metadata)
-			if err != nil {
-				resp.Error = int32(unix.ENOSYS)
-				resp.Val = ^uint64(0) // -1
-			}
-			resp.Flags = 0
-		case "chmod":
-			resp.Error = int32(unix.ENOMEDIUM)
-			resp.Val = ^uint64(0) // -1
-			resp.Flags = 0
 		case "openat":
-			//fmt.Println("open executed")
 			fileName, err := readArgString(req.Pid, int64(req.Data.Args[1]))
 			if err != nil {
-				fmt.Printf("Cannot read argument: %s", err)
+				logrus.Debugf("Cannot read argument: %s", err)
 			}
-			//else {
-			//	fmt.Printf("stat: %q\n", fileName)
-			//}
 
 			if fileName == "/dev/null2" {
 				fileFd := runOpenForContainer()
-				//fmt.Printf("fd of file is %d\n", fileFd)
-				if fileFd != -1 {
-					ret := C.replace_fd(C.ulonglong(req.ID), C.int(fd), C.int(fileFd))
-					if int(ret) == -1 {
-						fmt.Printf("replace_fd failed\n")
-					}
-					resp.Flags = 0
-					resp.Val = uint64(ret) // ?
-					unix.Close(fileFd)
-
-					time.Sleep(100 * time.Millisecond)
-					continue
+				//logrus.Debugf("fd of file is %d\n", fileFd)
+				if fileFd == -1 {
+					logrus.Debugf("failed to open file\n")
+					resp.Error = int32(unix.ENOMEDIUM)
+					resp.Val = ^uint64(0)
+					goto sendResponse
 				}
+
+				ret := C.replace_fd(C.ulonglong(req.ID), C.int(fd), C.int(fileFd))
+				if int(ret) == -1 {
+					logrus.Debugf("replace_fd failed\n")
+					resp.Error = int32(unix.ENOMEDIUM)
+					resp.Val = ^uint64(0)
+				} else {
+					resp.Val = uint64(ret)
+				}
+
+				resp.Flags = 0 // do not continue with the syscall
+				unix.Close(fileFd)
 			}
+			goto sendResponse
 		}
 
 	sendResponse:

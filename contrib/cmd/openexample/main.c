@@ -10,14 +10,22 @@ int main(void) {
     while (1) {
         fd = openat(-1, "/dev/null2", O_RDONLY, 0);
         if (fd < 0) {
-            printf("error opening file");
+            printf("error opening file\n");
+            sleep(1);
             continue;
         }
 
         printf("[%d] fd was: %d\n", i, fd);
+
+        if (fd != 3) {
+            printf("stopppppp. fd is not 3\n");
+            getchar();
+        }
+
         int ret = close(fd);
         if (ret) {
             printf("failed to close fd\n");
+            sleep(1);
         }
 
         i++;
