@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"runtime"
 	//"runtime"
 	"time"
 
@@ -9,7 +10,8 @@ import (
 )
 
 func main() {
-	//runtime.LockOSThread()
+	runtime.LockOSThread()
+	i := 0
 	for {
 	again:
 		fd, err := syscall.Openat(0, "/dev/null2", 0, 0)
@@ -24,9 +26,11 @@ func main() {
 		}
 
 		if fd > 0 {
-			fmt.Printf("fd was: %d\n", fd)
+			fmt.Printf("[%d] fd was: %d\n", i, fd)
 			syscall.Close(fd)
 		}
+
+		i++
 
 		//time.Sleep(1 * time.Second)
 	}

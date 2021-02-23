@@ -62,12 +62,11 @@ int replace_fd(__u64 id, int notify_fd, int fd) {
 		.flags = SECCOMP_ADDFD_FLAG_SEND,
 		.srcfd = fd,
 		.newfd = 0,
-		//.newfd = 50,
 		.newfd_flags = 0,
 	};
 	int ret = ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_ADDFD, &addfd);
 
-	printf("newfd is %d\n", addfd.newfd);
+	//printf("newfd is %d\n", addfd.newfd);
 
 	printf("return code of ioctl is %d\n", ret);
 	return ret;
@@ -238,24 +237,28 @@ func notifHandler(fd libseccomp.ScmpFd, metadata string) {
 			resp.Val = ^uint64(0) // -1
 			resp.Flags = 0
 		case "openat":
-			fmt.Println("open executed")
+			//fmt.Println("open executed")
 			fileName, err := readArgString(req.Pid, int64(req.Data.Args[1]))
 			if err != nil {
 				fmt.Printf("Cannot read argument: %s", err)
-			} else {
-				fmt.Printf("stat: %q\n", fileName)
 			}
+			//else {
+			//	fmt.Printf("stat: %q\n", fileName)
+			//}
 
 			if fileName == "/dev/null2" {
 				fileFd := runOpenForContainer()
+				//fmt.Printf("fd of file is %d\n", fileFd)
 				if fileFd != -1 {
 					ret := C.replace_fd(C.ulonglong(req.ID), C.int(fd), C.int(fileFd))
+					if int(ret) == -1 {
+						fmt.Printf("replace_fd failed\n")
+					}
 					resp.Flags = 0
-					fmt.Printf("fd of file is %d\n", fileFd)
 					resp.Val = uint64(ret) // ?
 					unix.Close(fileFd)
 
-					time.Sleep(1 * time.Second)
+					time.Sleep(100 * time.Millisecond)
 					continue
 				}
 			}
