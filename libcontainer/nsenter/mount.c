@@ -108,22 +108,28 @@
 
 #ifndef __NR_mount_setattr
 	#if defined __alpha__
-		#define __NR_mount_setattr 551
+		#define __NR_mount_setattr 552
 	#elif defined _MIPS_SIM
 		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
-			#define __NR_mount_setattr 4441
+			#define __NR_mount_setattr (442 + 4000)
 		#endif
 		#if _MIPS_SIM == _MIPS_SIM_NABI32	/* n32 */
-			#define __NR_mount_setattr 6441
+			#define __NR_mount_setattr (442 + 6000)
 		#endif
 		#if _MIPS_SIM == _MIPS_SIM_ABI64	/* n64 */
-			#define __NR_mount_setattr 5441
+			#define __NR_mount_setattr (442 + 5000)
 		#endif
 	#elif defined __ia64__
-		#define __NR_mount_setattr (441 + 1024)
+		#define __NR_mount_setattr (442 + 1024)
 	#else
-		#define __NR_mount_setattr 441
+		#define __NR_mount_setattr 442
 	#endif
+struct mount_attr {
+	__u64 attr_set;
+	__u64 attr_clr;
+	__u64 propagation;
+	__u64 userns_fd;
+};
 #endif
 
 #ifndef __NR_fsconfig
@@ -204,14 +210,6 @@
 		__internal_ret__;                             \
 	})
 
-struct mount_attr {
-	__u64 attr_set;
-	__u64 attr_clr;
-	__u64 propagation;
-	__u32 userns;
-	__u32 reserved[0];
-};
-
 static inline int sys_mount_setattr(int dfd, const char *path, unsigned int flags,
 				    struct mount_attr *attr, size_t size)
 {
@@ -236,7 +234,6 @@ static inline int sys_move_mount(int from_dfd, const char *from_pathname, int to
 
 int mount_id_mapped(const char *source, const char *target, pid_t pid) {
 	int source_fd;
-	int target_fd;
 	int userns_fd;
 	int ret;
 	struct mount_attr attr = {};
@@ -248,14 +245,6 @@ int mount_id_mapped(const char *source, const char *target, pid_t pid) {
 		return source_fd;
 	}
 
-	ret = sys_move_mount(source_fd, "", -EBADF, target, MOVE_MOUNT_F_EMPTY_PATH);
-	if (ret < 0) {
-		//snprintf(error, 10 * 4096,  "%m - Failed to attach mount to %s\n", target);
-		close(source_fd);
-		return ret;
-	}
-	close(source_fd);
-
 	snprintf(path, sizeof(path), "/proc/%d/ns/user", pid);
 	userns_fd = open(path, O_RDONLY | O_CLOEXEC);
 	if (userns_fd < 0) {
@@ -263,22 +252,24 @@ int mount_id_mapped(const char *source, const char *target, pid_t pid) {
 		return userns_fd;
 	}
 
-	attr.userns = userns_fd;
+	attr.userns_fd = userns_fd;
 	attr.attr_set = MOUNT_ATTR_IDMAP;
 
-	target_fd = open(target, O_RDONLY | O_CLOEXEC);
-	if (target_fd < 0) {
-		//snprintf(error, 10 * 4096, "%m - Failed to open %s\n", target);
-		return target_fd;
-	}
-
-	ret = sys_mount_setattr(target_fd, "", AT_EMPTY_PATH | AT_RECURSIVE, &attr, sizeof(attr));
+	ret = sys_mount_setattr(source_fd, "", AT_EMPTY_PATH | AT_RECURSIVE, &attr, sizeof(attr));
 	if (ret < 0) {
 		//snprintf(error, 10 * 4096, "%m - Failed to change mount attributes\n");
 		umount(target);
+		close(source_fd);
 		return ret;
 	}
-	close(target_fd);
+
+	ret = sys_move_mount(source_fd, "", -EBADF, target, MOVE_MOUNT_F_EMPTY_PATH);
+	if (ret < 0) {
+		//snprintf(error, 10 * 4096,  "%m - Failed to attach mount to %s\n", target);
+		close(source_fd);
+		return ret;
+	}
+	close(source_fd);
 
 	return 0;
 }
