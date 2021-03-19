@@ -26,3 +26,5 @@ require (
 	golang.org/x/sys v0.0.0-20210124154548-22da62e12c0c
 	google.golang.org/protobuf v1.25.0
 )
+
+replace github.com/seccomp/libseccomp-golang => github.com/kinvolk/libseccomp-golang v0.9.2-0.20201015103602-d8c27e1992d8
