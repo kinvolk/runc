@@ -202,7 +202,7 @@ func (p *setnsProcess) start() (retErr error) {
 				},
 			}
 			if err := sendContainerProcessState(p.config.Config.Seccomp.ListenerPath,
-				containerProcessState, int(seccompFd), int(pidfd)); err != nil {
+				containerProcessState, int(seccompFd)); err != nil {
 				return err
 			}
 
@@ -491,7 +491,7 @@ func (p *initProcess) start() (retErr error) {
 				State:    *s,
 			}
 			if err := sendContainerProcessState(p.config.Config.Seccomp.ListenerPath,
-				containerProcessState, int(seccompFd), int(pidfd)); err != nil {
+				containerProcessState, int(seccompFd)); err != nil {
 				return err
 			}
 
@@ -694,7 +694,7 @@ func (p *initProcess) forwardChildLogs() {
 	go logs.ForwardLogs(p.logFilePair.parent)
 }
 
-func sendContainerProcessState(listenerPath string, state *specs.ContainerProcessState, fds ...int) error {
+func sendContainerProcessState(listenerPath string, state *specs.ContainerProcessState, fd int) error {
 	conn, err := net.Dial("unix", listenerPath)
 	if err != nil {
 		return fmt.Errorf("cannot connect to %q: %v\n", listenerPath, err)
@@ -711,7 +711,7 @@ func sendContainerProcessState(listenerPath string, state *specs.ContainerProces
 		return fmt.Errorf("cannot marshall seccomp state: %v\n", err)
 	}
 
-	err = utils.SendFds(socket, b, fds...)
+	err = utils.SendFds(socket, b, fd)
 	if err != nil {
 		return fmt.Errorf("cannot send seccomp fd to %s: %v\n", listenerPath, err)
 	}
