@@ -29,7 +29,57 @@ func init() {
 	logrus.SetLevel(logrus.DebugLevel)
 }
 
-// TODO rata: don't leak open fds!
+func closeStateFds(recvFds []int) {
+	for i := range recvFds {
+		// Ignore the return code. There isn't anything better to do.
+		unix.Close(i)
+	}
+}
+
+// parseContainerProcessState returns the seccomp-fd and closes the rest of the fds in recvFds.
+// In case of error, all recvFds are closed.
+// StateFds is assumed to be formated as specs.ContainerProcessState.Fds and
+// recvFds the corresponding list of received fds in the same SCM_RIGHT message.
+func parseStateFds(stateFds []string, recvFds []int) (uintptr, error) {
+	// Lets find the index in stateFds of the seccomp-fd.
+	idx := -1
+	err := false
+
+	for i, name := range stateFds {
+		if name == specs.SeccompFdName && idx == -1 {
+			idx = i
+			continue
+		}
+
+		// We found the seccompFdName two times. Error out!
+		if name == specs.SeccompFdName && idx != -1 {
+			err = true
+		}
+	}
+
+	if idx == -1 || err {
+		closeStateFds(recvFds)
+		return 0, fmt.Errorf("seccomp fd not found or malformed containerProcessState.Fds")
+	}
+
+	if idx >= len(recvFds) || idx < 0 {
+		closeStateFds(recvFds)
+		return 0, fmt.Errorf("seccomp fd index out of range")
+	}
+
+	fd := uintptr(recvFds[idx])
+
+	for i := range recvFds {
+		if i == idx {
+			continue
+		}
+
+		fmt.Println("closing fd", recvFds[i])
+		unix.Close(recvFds[i])
+	}
+
+	return fd, nil
+}
 
 func handleNewMessage(sockfd int) (uintptr, string, error) {
 	MaxNameLen := 4096
@@ -49,13 +99,6 @@ func handleNewMessage(sockfd int) (uintptr, string, error) {
 	stateBuf = stateBuf[:n]
 	oob = oob[:oobn]
 
-	state := &specs.ContainerProcessState{}
-	err = json.Unmarshal(stateBuf, state)
-	if err != nil {
-		return 0, "", fmt.Errorf("cannot parse OCI state: %v\n", err)
-	}
-	logrus.Debugf("received ContinerProcessState: %v\n", string(stateBuf))
-
 	scms, err := unix.ParseSocketControlMessage(oob)
 	if err != nil {
 		return 0, "", err
@@ -70,27 +113,19 @@ func handleNewMessage(sockfd int) (uintptr, string, error) {
 		return 0, "", err
 	}
 
-	fdIndex := -1
-	for i, fdName := range state.Fds {
-		if fdName == "seccompFd" {
-			fdIndex = i
-		} else {
-			// close other file descriptors we're not interested in.
-			unix.Close(fds[i])
-		}
+	containerProcessState := &specs.ContainerProcessState{}
+	err = json.Unmarshal(stateBuf, containerProcessState)
+	if err != nil {
+		closeStateFds(fds)
+		return 0, "", fmt.Errorf("cannot parse OCI state: %v\n", err)
 	}
 
-	if fdIndex == -1 {
-		return 0, "", fmt.Errorf("seccomp fd not found")
+	fd, err := parseStateFds(containerProcessState.Fds, fds)
+	if err != nil {
+		return 0, "", err
 	}
 
-	// Bug! <=
-	if len(fds) < fdIndex {
-		return 0, "", fmt.Errorf("seccomp fd index out of range")
-	}
-
-	fd := uintptr(fds[fdIndex])
-	return fd, state.Metadata, nil
+	return fd, containerProcessState.Metadata, nil
 }
 
 func readArgString(pid uint32, offset int64) (string, error) {
