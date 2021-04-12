@@ -29,7 +29,9 @@ func init() {
 	logrus.SetLevel(logrus.DebugLevel)
 }
 
-func handleNewMessage(sockfd int) (*os.File, string, error) {
+// TODO rata: don't leak open fds!
+
+func handleNewMessage(sockfd int) (uintptr, string, error) {
 	MaxNameLen := 4096
 	oobSpace := unix.CmsgSpace(4)
 	stateBuf := make([]byte, 4096)
@@ -37,10 +39,10 @@ func handleNewMessage(sockfd int) (*os.File, string, error) {
 
 	n, oobn, _, _, err := unix.Recvmsg(sockfd, stateBuf, oob, 0)
 	if err != nil {
-		return nil, "", err
+		return 0, "", err
 	}
 	if n >= MaxNameLen || oobn != oobSpace {
-		return nil, "", fmt.Errorf("recvfd: incorrect number of bytes read (n=%d oobn=%d)", n, oobn)
+		return 0, "", fmt.Errorf("recvfd: incorrect number of bytes read (n=%d oobn=%d)", n, oobn)
 	}
 
 	// Truncate.
@@ -50,22 +52,22 @@ func handleNewMessage(sockfd int) (*os.File, string, error) {
 	state := &specs.ContainerProcessState{}
 	err = json.Unmarshal(stateBuf, state)
 	if err != nil {
-		return nil, "", fmt.Errorf("cannot parse OCI state: %v\n", err)
+		return 0, "", fmt.Errorf("cannot parse OCI state: %v\n", err)
 	}
 	logrus.Debugf("received ContinerProcessState: %v\n", string(stateBuf))
 
 	scms, err := unix.ParseSocketControlMessage(oob)
 	if err != nil {
-		return nil, "", err
+		return 0, "", err
 	}
 	if len(scms) != 1 {
-		return nil, "", fmt.Errorf("recvfd: number of SCMs is not 1: %d", len(scms))
+		return 0, "", fmt.Errorf("recvfd: number of SCMs is not 1: %d", len(scms))
 	}
 	scm := scms[0]
 
 	fds, err := unix.ParseUnixRights(&scm)
 	if err != nil {
-		return nil, "", err
+		return 0, "", err
 	}
 
 	fdIndex := -1
@@ -79,15 +81,16 @@ func handleNewMessage(sockfd int) (*os.File, string, error) {
 	}
 
 	if fdIndex == -1 {
-		return nil, "", fmt.Errorf("seccomp fd not found")
+		return 0, "", fmt.Errorf("seccomp fd not found")
 	}
 
+	// Bug! <=
 	if len(fds) < fdIndex {
-		return nil, "", fmt.Errorf("seccomp fd index out of range")
+		return 0, "", fmt.Errorf("seccomp fd index out of range")
 	}
 
 	fd := uintptr(fds[fdIndex])
-	return os.NewFile(fd, "seccomp-fd"), state.Metadata, nil
+	return fd, state.Metadata, nil
 }
 
 func readArgString(pid uint32, offset int64) (string, error) {
@@ -224,7 +227,7 @@ func main() {
 			logrus.Errorf("Error receiving seccomp file descriptor: %v", err)
 			continue
 		}
-		logrus.Infof("Received new seccomp fd: %v\n", newFd.Fd())
-		go notifHandler(libseccomp.ScmpFd(newFd.Fd()), metadata)
+		logrus.Infof("Received new seccomp fd: %v\n", newFd)
+		go notifHandler(libseccomp.ScmpFd(newFd), metadata)
 	}
 }
