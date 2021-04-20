@@ -156,9 +156,12 @@ func (l *linuxStandardInit) Init() error {
 		}
 		if seccompFd != -1 {
 			err := syncParentSeccomp(l.pipe, seccompFd)
-			unix.Close(seccompFd)
 			if err != nil {
 				return errors.Wrap(err, "sync parent seccomp")
+			}
+			err = unix.Close(seccompFd)
+			if err != nil {
+				return errors.Wrap(err, "close seccomp fd")
 			}
 		}
 	}
@@ -197,9 +200,12 @@ func (l *linuxStandardInit) Init() error {
 		}
 		if seccompFd != -1 {
 			err := syncParentSeccomp(l.pipe, seccompFd)
-			unix.Close(seccompFd)
 			if err != nil {
 				return errors.Wrap(err, "sync parent seccomp")
+			}
+			err = unix.Close(seccompFd)
+			if err != nil {
+				return errors.Wrap(err, "close seccomp fd")
 			}
 		}
 	}
