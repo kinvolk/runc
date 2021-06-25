@@ -5,6 +5,7 @@ package patchbpf
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"os"
 	"runtime"
