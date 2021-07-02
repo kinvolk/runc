@@ -749,7 +749,9 @@ void nsexec(void)
 				bail("unable to spawn stage-1");
 
 			syncfd = sync_child_pipe[1];
-			close(sync_child_pipe[0]);
+			int r = close(sync_child_pipe[0]);
+			if (r == -1)
+				bail("Failed to close fd sync_child_pipe[0]");
 
 			/*
 			 * State machine for synchronisation with the children. We only
@@ -839,7 +841,10 @@ void nsexec(void)
 
 			/* Now sync with grandchild. */
 			syncfd = sync_grandchild_pipe[1];
-			close(sync_grandchild_pipe[0]);
+			r = close(sync_grandchild_pipe[0]);
+			if (r == -1)
+				bail("Failed to close fd sync_grandchild_pipe[0]");
+
 			write_log(DEBUG, "-> stage-2 synchronisation loop");
 			stage2_complete = false;
 			while (!stage2_complete) {
@@ -885,7 +890,9 @@ void nsexec(void)
 
 			/* We're in a child and thus need to tell the parent if we die. */
 			syncfd = sync_child_pipe[0];
-			close(sync_child_pipe[1]);
+			int r = close(sync_child_pipe[1]);
+			if (r == -1)
+				bail("failed to close sync_child_pipe[1]");
 
 			/* For debugging. */
 			prctl(PR_SET_NAME, (unsigned long)"runc:[1:CHILD]", 0, 0, 0);
@@ -1042,8 +1049,15 @@ void nsexec(void)
 
 			/* We're in a child and thus need to tell the parent if we die. */
 			syncfd = sync_grandchild_pipe[0];
-			close(sync_grandchild_pipe[1]);
-			close(sync_child_pipe[0]);
+			int r = close(sync_grandchild_pipe[1]);
+			if (r == -1) {
+				bail("failed to close sync_grandchild_pipe[1]");
+			}
+
+			r = close(sync_child_pipe[0]);
+			if (r == -1) {
+				bail("failed to close sync_child_pipe[0]");
+			}
 
 			/* For debugging. */
 			prctl(PR_SET_NAME, (unsigned long)"runc:[2:INIT]", 0, 0, 0);
@@ -1094,7 +1108,9 @@ void nsexec(void)
 				bail("failed to sync with patent: write(SYNC_CHILD_FINISH)");
 
 			/* Close sync pipes. */
-			close(sync_grandchild_pipe[0]);
+			r = close(sync_grandchild_pipe[0]);
+			if (r == -1)
+				bail("failed to close sync_grandchild_pipe[0]");
 
 			/* Free netlink data. */
 			nl_free(&config);
