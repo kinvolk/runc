@@ -26,7 +26,7 @@ type linuxStandardInit struct {
 	parentPid     int
 	fifoFd        int
 	logFd         int
-	mountFds      []*int
+	mountFds      []int
 	config        *initConfig
 }
 
@@ -92,11 +92,11 @@ func (l *linuxStandardInit) Init() error {
 	// We don't need the mountFds after prepareRootfs() nor if it fails.
 	err := prepareRootfs(l.pipe, l.config, l.mountFds)
 	for _, m := range l.mountFds {
-		if m == nil {
+		if m == -1 {
 			continue
 		}
 
-		if err := unix.Close(*m); err != nil {
+		if err := unix.Close(m); err != nil {
 			return fmt.Errorf("Unable to close mountFds fds: %w", err)
 		}
 	}

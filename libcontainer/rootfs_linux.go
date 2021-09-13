@@ -52,7 +52,7 @@ func needsSetupDev(config *configs.Config) bool {
 // prepareRootfs sets up the devices, mount points, and filesystems for use
 // inside a new mount namespace. It doesn't set anything as ro. You must call
 // finalizeRootfs after this function to finish setting up the rootfs.
-func prepareRootfs(pipe io.ReadWriter, iConfig *initConfig, mountFds []*int) (err error) {
+func prepareRootfs(pipe io.ReadWriter, iConfig *initConfig, mountFds []int) (err error) {
 	config := iConfig.Config
 	if err := prepareRoot(config); err != nil {
 		return fmt.Errorf("error preparing rootfs: %w", err)
@@ -79,8 +79,8 @@ func prepareRootfs(pipe io.ReadWriter, iConfig *initConfig, mountFds []*int) (er
 
 		// Just before the loop we checked that if not empty, len(mountFds) == len(config.Mounts).
 		// Therefore, we can access mountFds[i] without any concerns.
-		if mountFds != nil {
-			mountConfig.fd = mountFds[i]
+		if mountFds != nil && mountFds[i] != -1 {
+			mountConfig.fd = &mountFds[i]
 		}
 
 		if err := mountToRootfs(m, mountConfig); err != nil {

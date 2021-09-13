@@ -367,7 +367,7 @@ func NewgidmapPath(newgidmapPath string) func(*LinuxFactory) error {
 	}
 }
 
-func parseMountFds() ([]*int, error) {
+func parseMountFds() ([]int, error) {
 	fdsStr := os.Getenv("_LIBCONTAINER_MOUNT_FDS")
 	if fdsStr == "" {
 		// Always return the nil slice if no fd is present.
@@ -379,8 +379,9 @@ func parseMountFds() ([]*int, error) {
 
 	// Indexes in the mountFds slice are used to assign/pair the fd (if any) to a mount in the container. Therefore,
 	// the mountFds slice MUST be of size len(fds), that was constructed with the same size as the container mounts.
-	mountFds := make([]*int, len(fds))
+	mountFds := make([]int, len(fds))
 	for i, fd := range fds {
+		mountFds[i] = -1
 		if fd == "" {
 			continue
 		}
@@ -390,7 +391,7 @@ func parseMountFds() ([]*int, error) {
 			return nil, fmt.Errorf("unable to convert _LIBCONTAINER_MOUNT_FDS(%q): %w", fdsStr, err)
 		}
 
-		mountFds[i] = &mountFd
+		mountFds[i] = mountFd
 	}
 
 	return mountFds, nil
