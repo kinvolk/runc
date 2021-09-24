@@ -425,3 +425,78 @@ function simple_cr() {
 	# busybox should be back up and running
 	testcontainer test_busybox running
 }
+
+# XXX: This is c&p from the previous test, adapted to use inaccessible bind mounts.
+# This is a WIP hack, that fails for now.
+@test "checkpoint and restore with inaccessible bind mounts" {
+	requires root
+
+	## Prepare source folders for bind mount
+	mkdir -p source-{accessible,inaccessible-1,inaccessible-2}/dir
+	touch source-{accessible,inaccessible-1,inaccessible-2}/dir/foo.txt
+
+	## Permissions only to the owner, it is inaccessible to group/others
+	chmod 700 source-inaccessible-{1,2}
+
+	# We need to give permissions for others so the uid inside the userns
+	# can mount the rootfs on itself. Otherwise the rootfs mount will fail.
+	chmod 755 "$ROOT"
+
+	# We need runc inside the userns to be able to create folders for the
+	# mounts, so make it ownwer of the rootfs
+	chown 100000:100000 "$ROOT/bundle/rootfs"
+
+	update_config ' .linux.namespaces += [{"type": "user"}]
+		| .linux.uidMappings += [{"hostID": 100000, "containerID": 0, "size": 65534}]
+		| .linux.gidMappings += [{"hostID": 100000, "containerID": 0, "size": 65534}] '
+
+	bind1="source-inaccessible-1/dir"
+	bind2="source-inaccessible-2/dir"
+
+	#bind1=$(mktemp -d -p .)
+	#bind2=$(mktemp -d -p .)
+
+	update_config '	  .mounts += [{
+					type: "bind",
+					source: "'"$bind1"'",
+					destination: "/test",
+					options: ["rw", "bind"]
+				},
+	                        {
+					type: "bind",
+					source: "'"$bind2"'",
+					destination: "/test2",
+					options: ["rw", "bind"]
+				}]'
+
+	runc run -d --console-socket "$CONSOLE_SOCKET" test_busybox
+	[ "$status" -eq 0 ]
+
+	testcontainer test_busybox running
+
+	# checkpoint the running container
+	runc --criu "$CRIU" checkpoint --work-path ./work-dir test_busybox
+	grep -B 5 Error ./work-dir/dump.log || true
+	[ "$status" -eq 0 ]
+
+	# after checkpoint busybox is no longer running
+	testcontainer test_busybox checkpointed
+
+	# cleanup mountpoints created by runc during creation
+	# the mountpoints should be recreated during restore - that is the actual thing tested here
+	# TODO: adjust for this test
+	# rm -rf "${bind1:?}"/*
+
+	# rata tmp hack: We need to be able to read this folder on restore
+	chown 100000:100000 "$ROOT/bundle/checkpoint"
+	chmod 755 "$ROOT/bundle/work-dir"
+	ls -l .
+
+	# restore from checkpoint
+	runc --criu "$CRIU" restore -d --work-path ./work-dir --console-socket "$CONSOLE_SOCKET" test_busybox
+	grep -B 5 Error ./work-dir/restore.log || true
+	[ "$status" -eq 0 ]
+
+	# busybox should be back up and running
+	testcontainer test_busybox running
+}
