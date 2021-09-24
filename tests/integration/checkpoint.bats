@@ -116,6 +116,11 @@ function simple_cr() {
 		# after checkpoint busybox is no longer running
 		testcontainer test_busybox checkpointed
 
+		# criu creates this folder without permissions for the user in
+		# the userns (if we happen to be running with userns).
+		# Add read permission so all tests can read it.
+		chmod 755 "$ROOT/bundle/checkpoint"
+
 		# restore from checkpoint
 		runc --criu "$CRIU" "$@" restore -d --work-path ./work-dir --console-socket "$CONSOLE_SOCKET" test_busybox
 		grep -B 5 Error ./work-dir/restore.log || true
@@ -127,6 +132,21 @@ function simple_cr() {
 }
 
 @test "checkpoint and restore" {
+	simple_cr
+}
+@test "checkpoint and restore (userns)" {
+	# We need to give permissions for others so the uid inside the userns
+	# can mount the rootfs on itself. Otherwise the rootfs mount will fail.
+	chmod 755 "$ROOT"
+
+	# We need runc inside the userns to be able to create folders for the
+	# mounts, so make it owner of the rootfs
+	chown 100000:100000 "$ROOT/bundle/rootfs"
+
+	update_config ' .linux.namespaces += [{"type": "user"}]
+		| .linux.uidMappings += [{"hostID": 100000, "containerID": 0, "size": 65534}]
+		| .linux.gidMappings += [{"hostID": 100000, "containerID": 0, "size": 65534}] '
+
 	simple_cr
 }
 
