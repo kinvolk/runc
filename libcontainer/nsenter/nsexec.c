@@ -690,12 +690,17 @@ void receive_fd(int sockfd, int new_fd)
 	if (fd_count != 1)
 		bail("received control message from unix socket %d with too many fds: %d", sockfd, fd_count);
 
+	fd_payload = (int *)CMSG_DATA(cmsg);
+
 	// We will allocate new_fd, validate it is not used yet as we expect.
 	// Otherwise, dup3() might close an fd we don't expect to close.
-	if (fcntl(new_fd, F_GETFD) != -1)
-		bail("fd %d must be unused, but is used", new_fd);
+	if (fcntl(new_fd, F_GETFD) != -1) {
+		// XXX: add sleep and debug why this happens
+		// It seems tricky that we are closing fds in the proper order
+		// to not lose them!
+		bail("fd %d must be unused, but is used. Will not dup fd: %d", new_fd, );
+	}
 
-	fd_payload = (int *)CMSG_DATA(cmsg);
 	ret = dup3(*fd_payload, new_fd, O_CLOEXEC);
 	if (ret < 0)
 		bail("cannot dup3 fd %d to %d", *fd_payload, new_fd);
