@@ -1016,13 +1016,18 @@ func SetupSeccomp(config *specs.LinuxSeccomp) (*configs.Seccomp, error) {
 		return nil, nil
 	}
 
-	// We don't currently support seccomp flags.
-	if len(config.Flags) != 0 {
-		return nil, errors.New("seccomp flags are not yet supported by runc")
-	}
-
 	newConfig := new(configs.Seccomp)
 	newConfig.Syscalls = []*configs.Syscall{}
+
+	// We don't currently support all seccomp flags.
+	for _, flag := range config.Flags {
+		switch flag {
+		case "SECCOMP_FILTER_FLAG_LOG":
+			newConfig.Flags = append(newConfig.Flags, "SECCOMP_FILTER_FLAG_LOG")
+		default:
+			return nil, fmt.Errorf("seccomp flags %q not yet supported by runc", flag)
+		}
+	}
 
 	if len(config.Architectures) > 0 {
 		newConfig.Architectures = []string{}

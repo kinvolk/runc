@@ -86,6 +86,18 @@ func InitSeccomp(config *configs.Seccomp) (int, error) {
 		}
 	}
 
+	// Add extra flags
+	for _, flag := range config.Flags {
+		switch flag {
+		case "SECCOMP_FILTER_FLAG_LOG":
+			if err := filter.SetLogBit(true); err != nil {
+				return -1, fmt.Errorf("error adding log flag to seccomp filter: %w", err)
+			}
+		default:
+			return -1, fmt.Errorf("seccomp flags %q not yet supported by runc", flag)
+		}
+	}
+
 	// Unset no new privs bit
 	if err := filter.SetNoNewPrivsBit(false); err != nil {
 		return -1, fmt.Errorf("error setting no new privileges: %w", err)

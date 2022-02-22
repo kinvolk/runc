@@ -33,6 +33,7 @@ type IDMap struct {
 type Seccomp struct {
 	DefaultAction    Action     `json:"default_action"`
 	Architectures    []string   `json:"architectures"`
+	Flags            []string   `json:"flags"`
 	Syscalls         []*Syscall `json:"syscalls"`
 	DefaultErrnoRet  *uint      `json:"default_errno_ret"`
 	ListenerPath     string     `json:"listener_path,omitempty"`
