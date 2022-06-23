@@ -1208,7 +1208,7 @@ void nsexec(void)
 				}
 
 				/* Become root in the namespace proper. */
-				if (setresuid(0, 0, 0) < 0)
+				if (setresuid(1, 1, 1) < 0)
 					bail("failed to become root in user namespace");
 			}
 
@@ -1330,10 +1330,10 @@ void nsexec(void)
 			if (setsid() < 0)
 				bail("setsid failed");
 
-			if (setuid(0) < 0)
+			if (setuid(1) < 0)
 				bail("setuid failed");
 
-			if (setgid(0) < 0)
+			if (setgid(1) < 0)
 				bail("setgid failed");
 
 			if (!config.is_rootless_euid && config.is_setgroup) {

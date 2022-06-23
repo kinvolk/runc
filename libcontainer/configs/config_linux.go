@@ -29,7 +29,8 @@ func (c Config) HostUID(containerId int) (int, error) {
 // HostRootUID gets the root uid for the process on host which could be non-zero
 // when user namespaces are enabled.
 func (c Config) HostRootUID() (int, error) {
-	return c.HostUID(0)
+	// XXX: rata. Maybe use the min container_id in the mapping?
+	return c.HostUID(1)
 }
 
 // HostGID gets the translated gid for the process on host which could be
@@ -52,7 +53,8 @@ func (c Config) HostGID(containerId int) (int, error) {
 // HostRootGID gets the root gid for the process on host which could be non-zero
 // when user namespaces are enabled.
 func (c Config) HostRootGID() (int, error) {
-	return c.HostGID(0)
+	// XXX: rata. Maybe use the min container_id in the mapping?
+	return c.HostGID(1)
 }
 
 // Utility function that gets a host ID for a container ID from user namespace map
