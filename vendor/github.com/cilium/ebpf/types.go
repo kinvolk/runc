@@ -1,6 +1,7 @@
 package ebpf
 
 import (
+	"github.com/cilium/ebpf/internal/sys"
 	"github.com/cilium/ebpf/internal/unix"
 )
 
@@ -11,7 +12,7 @@ import (
 type MapType uint32
 
 // Max returns the latest supported MapType.
-func (_ MapType) Max() MapType {
+func (MapType) Max() MapType {
 	return maxMapType - 1
 }
 
@@ -103,12 +104,6 @@ const (
 	maxMapType
 )
 
-// Deprecated: StructOpts was a typo, use StructOpsMap instead.
-//
-// Declared as a variable to prevent stringer from picking it up
-// as an enum value.
-var StructOpts MapType = StructOpsMap
-
 // hasPerCPUValue returns true if the Map stores a value per CPU.
 func (mt MapType) hasPerCPUValue() bool {
 	return mt == PerCPUHash || mt == PerCPUArray || mt == LRUCPUHash || mt == PerCPUCGroupStorage
@@ -126,11 +121,22 @@ func (mt MapType) canStoreProgram() bool {
 	return mt == ProgramArray
 }
 
+// hasBTF returns true if the map type supports BTF key/value metadata.
+func (mt MapType) hasBTF() bool {
+	switch mt {
+	case PerfEventArray, CGroupArray, StackTrace, ArrayOfMaps, HashOfMaps, DevMap,
+		DevMapHash, CPUMap, XSKMap, SockMap, SockHash, Queue, Stack, RingBuf:
+		return false
+	default:
+		return true
+	}
+}
+
 // ProgramType of the eBPF program
 type ProgramType uint32
 
 // Max return the latest supported ProgramType.
-func (_ ProgramType) Max() ProgramType {
+func (ProgramType) Max() ProgramType {
 	return maxProgramType - 1
 }
 
@@ -167,6 +173,7 @@ const (
 	Extension
 	LSM
 	SkLookup
+	Syscall
 	maxProgramType
 )
 
@@ -223,6 +230,7 @@ const (
 	AttachSkReuseportSelect
 	AttachSkReuseportSelectOrMigrate
 	AttachPerfEvent
+	AttachTraceKprobeMulti
 )
 
 // AttachFlags of the eBPF program used in BPF_PROG_ATTACH command
@@ -276,3 +284,20 @@ type BatchOptions struct {
 	ElemFlags uint64
 	Flags     uint64
 }
+
+// LogLevel controls the verbosity of the kernel's eBPF program verifier.
+// These constants can be used for the ProgramOptions.LogLevel field.
+type LogLevel = sys.LogLevel
+
+const (
+	// Print verifier state at branch points.
+	LogLevelBranch = sys.BPF_LOG_LEVEL1
+
+	// Print verifier state for every instruction.
+	// Available since Linux v5.2.
+	LogLevelInstruction = sys.BPF_LOG_LEVEL2
+
+	// Print verifier errors and stats at the end of the verification process.
+	// Available since Linux v5.2.
+	LogLevelStats = sys.BPF_LOG_STATS
+)
