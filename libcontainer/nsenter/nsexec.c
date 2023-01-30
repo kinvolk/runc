@@ -30,6 +30,121 @@
 /* Get all of the CLONE_NEW* flags. */
 #include "namespace.h"
 
+/* TODO: rata. Clean this up later */
+#include <sys/mount.h>
+#include <linux/mount.h>
+#include <sys/syscall.h>
+
+/* mount_setattr() */
+#ifndef MOUNT_ATTR_IDMAP
+#define MOUNT_ATTR_IDMAP 0x00100000
+#endif
+
+#ifndef __NR_mount_setattr
+	#if defined __alpha__
+		#define __NR_mount_setattr 552
+	#elif defined _MIPS_SIM
+		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
+			#define __NR_mount_setattr (442 + 4000)
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_NABI32	/* n32 */
+			#define __NR_mount_setattr (442 + 6000)
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_ABI64	/* n64 */
+			#define __NR_mount_setattr (442 + 5000)
+		#endif
+	#elif defined __ia64__
+		#define __NR_mount_setattr (442 + 1024)
+	#else
+		#define __NR_mount_setattr 442
+	#endif
+struct mount_attr {
+	__u64 attr_set;
+	__u64 attr_clr;
+	__u64 propagation;
+	__u64 userns_fd;
+};
+#endif
+
+/* open_tree() */
+#ifndef OPEN_TREE_CLONE
+#define OPEN_TREE_CLONE 1
+#endif
+
+#ifndef OPEN_TREE_CLOEXEC
+#define OPEN_TREE_CLOEXEC O_CLOEXEC
+#endif
+
+#ifndef __NR_open_tree
+	#if defined __alpha__
+		#define __NR_open_tree 538
+	#elif defined _MIPS_SIM
+		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
+			#define __NR_open_tree 4428
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_NABI32	/* n32 */
+			#define __NR_open_tree 6428
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_ABI64	/* n64 */
+			#define __NR_open_tree 5428
+		#endif
+	#elif defined __ia64__
+		#define __NR_open_tree (428 + 1024)
+	#else
+		#define __NR_open_tree 428
+	#endif
+#endif
+
+/* move_mount() */
+#ifndef MOVE_MOUNT_F_EMPTY_PATH
+#define MOVE_MOUNT_F_EMPTY_PATH 0x00000004 /* Empty from path permitted */
+#endif
+
+#ifndef MOVE_MOUNT_T_EMPTY_PATH
+#define MOVE_MOUNT_T_EMPTY_PATH 0x00000040 /* Empty to path permitted */
+#endif
+
+#ifndef MOVE_MOUNT__MASK
+#define MOVE_MOUNT__MASK 0x00000077
+#endif
+
+#ifndef __NR_move_mount
+	#if defined __alpha__
+		#define __NR_move_mount 539
+	#elif defined _MIPS_SIM
+		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
+			#define __NR_move_mount 4429
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_NABI32	/* n32 */
+			#define __NR_move_mount 6429
+		#endif
+		#if _MIPS_SIM == _MIPS_SIM_ABI64	/* n64 */
+			#define __NR_move_mount 5429
+		#endif
+	#elif defined __ia64__
+		#define __NR_move_mount (428 + 1024)
+	#else
+		#define __NR_move_mount 429
+	#endif
+#endif
+
+static inline int sys_mount_setattr(int dfd, const char *path, unsigned int flags,
+				    struct mount_attr *attr, size_t size)
+{
+	return syscall(__NR_mount_setattr, dfd, path, flags, attr, size);
+}
+
+static inline int sys_open_tree(int dfd, const char *filename, unsigned int flags)
+{
+	return syscall(__NR_open_tree, dfd, filename, flags);
+}
+
+static inline int sys_move_mount(int from_dfd, const char *from_pathname, int to_dfd,
+				 const char *to_pathname, unsigned int flags)
+{
+	return syscall(__NR_move_mount, from_dfd, from_pathname, to_dfd, to_pathname, flags);
+}
+
 extern char *escape_json_string(char *str);
 
 /* Synchronisation values. */
@@ -42,6 +157,8 @@ enum sync_t {
 	SYNC_CHILD_FINISH = 0x45,	/* The child or grandchild has finished. */
 	SYNC_MOUNTSOURCES_PLS = 0x46,	/* Tell parent to send mount sources by SCM_RIGHTS. */
 	SYNC_MOUNTSOURCES_ACK = 0x47,	/* All mount sources have been sent. */
+	SYNC_MOUNT_IDMAP_PLS = 0x48,	/* Tell parent to mount idmap sources. */
+	SYNC_MOUNT_IDMAP_ACK = 0x49,	/* All idmap mounts have been done. */
 };
 
 #define STAGE_SETUP  -1
@@ -832,6 +949,94 @@ void send_mountsources(int sockfd, pid_t child, char *mountsources, size_t mount
 		bail("failed to close container mount namespace fd %d", container_mntns_fd);
 }
 
+void mount_idmap(pid_t pid)
+{
+	write_log(DEBUG, "XXX: rata. ~> mount hardcoded idmap");
+	char proc_mnt_path[PATH_MAX], proc_user_path[PATH_MAX];
+
+	/* Join the container mount namespace so we mount there and keep a
+	 * reference to the current mnt ns so we come back afterwards.
+	 */
+	int host_mntns_fd = open("/proc/self/ns/mnt", O_RDONLY | O_CLOEXEC);
+	if (host_mntns_fd == -1)
+		bail("mount_idmap: failed to get current mount namespace");
+
+	int ret = snprintf(proc_mnt_path, sizeof(proc_mnt_path), "/proc/%d/ns/mnt", pid);
+	if (ret < 0 || (size_t)ret >= sizeof(proc_mnt_path))
+		bail("mount_idmap: failed to get mount namespace path");
+
+	write_log(DEBUG, "XXX: rata. ~> proc_mnt_path is: %s", proc_mnt_path);
+	int container_mntns_fd = open(proc_mnt_path, O_RDONLY | O_CLOEXEC);
+	if (container_mntns_fd == -1)
+		bail("mount_idmap: failed to get container mount namespace");
+
+	if (setns(container_mntns_fd, CLONE_NEWNS) < 0)
+		bail("mount_idmap: failed to setns to container mntns");
+
+	/* Create the idmap mount */
+	write_log(DEBUG, "XXX: rata. ~> With final slash");
+        int fd_tree = sys_open_tree(-EBADF, "/tmp/mycontainer/mnt-tmp/",
+                                OPEN_TREE_CLONE |
+                                OPEN_TREE_CLOEXEC |
+                                AT_EMPTY_PATH |
+				AT_SYMLINK_NOFOLLOW |
+				AT_NO_AUTOMOUNT |
+                                AT_RECURSIVE);
+        if (fd_tree < 0) {
+		write_log(DEBUG, "XXX: rata. Failed to open tree");
+		return;
+        }
+
+	ret = snprintf(proc_user_path, sizeof(proc_user_path), "/proc/%d/ns/user", pid);
+        if (ret < 0 || (size_t)ret >= sizeof(proc_user_path)) {
+                write_log(DEBUG, "XXX: rata. Failed to create userns path string");
+		return;
+	}
+
+	write_log(DEBUG, "XXX: rata. path_ns is: %s", proc_user_path);
+
+	int userns_fd = open(proc_user_path, O_RDONLY | O_CLOEXEC | O_NOCTTY);
+        if (userns_fd < 0) {
+                write_log(DEBUG, "XXX: rata. Failed to get user namespace fd");
+		return;
+	}
+
+	// Initialize this fucking struct!
+        struct mount_attr attr = {
+            .attr_set = MOUNT_ATTR_IDMAP,
+        };
+
+        attr.userns_fd = userns_fd;
+
+        ret = sys_mount_setattr(fd_tree, "", AT_EMPTY_PATH | AT_RECURSIVE, &attr, sizeof(attr));
+        if (ret < 0) {
+                write_log(DEBUG, "XXX: rata. Failed to change mount attributes: %d - %s\n", ret, strerror(errno));
+		// TODO: not leak open fds (userns_fd and fd_tree)!
+		return;
+	}
+        close(userns_fd);
+
+        ret = sys_move_mount(fd_tree, "", -EBADF, "/tmp/mycontainer/rootfs-userns/tmp/mount-1/", MOVE_MOUNT_F_EMPTY_PATH);
+        if (ret < 0) {
+                write_log(DEBUG, "XXX: rata. Failed to attach mount to dst.\n");
+		return;
+	}
+        close(fd_tree);
+
+	/* Join the host mnnt ns again */
+	if (setns(host_mntns_fd, CLONE_NEWNS) < 0)
+		bail("mount_idmap: failed to setns to host mntns");
+
+	ret = close(host_mntns_fd);
+	if (ret != 0)
+		bail("mount_idmap: failed to close host mount namespace fd %d", host_mntns_fd);
+	ret = close(container_mntns_fd);
+	if (ret != 0)
+		bail("mount_idmap: failed to close container mount namespace fd %d", container_mntns_fd);
+
+	write_log(DEBUG, "XXX: rata. ~> IDMAP MOUNT OK!");
+}
+
 void nsexec(void)
 {
 	int pipenum;
@@ -1027,6 +1232,10 @@ void nsexec(void)
 						sane_kill(stage2_pid, SIGKILL);
 						bail("failed to sync with stage-1: write(SYNC_USERMAP_ACK)");
 					}
+
+					// TODO: hardcoded PID now running in a userns in my host.
+					//mount_idmap(446770);
+					//mount_idmap(stage1_pid);
 					break;
 				case SYNC_RECVPID_PLS:
 					write_log(DEBUG, "stage-1 requested pid to be forwarded");
@@ -1073,6 +1282,15 @@ void nsexec(void)
 						sane_kill(stage1_pid, SIGKILL);
 						bail("failed to sync with child: write(SYNC_MOUNTSOURCES_ACK)");
 					}
+					break;
+				case SYNC_MOUNT_IDMAP_PLS:
+					mount_idmap(stage1_pid);
+					s = SYNC_MOUNT_IDMAP_ACK;
+					if (write(syncfd, &s, sizeof(s)) != sizeof(s)) {
+						sane_kill(stage1_pid, SIGKILL);
+						bail("failed to sync with child: write(SYNC_MOUNT_IDMAP_ACK)");
+					}
+
 					break;
 				case SYNC_CHILD_FINISH:
 					write_log(DEBUG, "stage-1 complete");
@@ -1229,6 +1447,10 @@ void nsexec(void)
 				bail("failed to unshare remaining namespaces (except cgroupns)");
 
 			/* Ask our parent to send the mount sources fds. */
+			// XXX: rata. TODO: shall we not kill stage2_pid here?
+			// we didn't clone yet. Maybe it is stage1_pid?
+			// Right now what it does is sending the signal to all
+			// if it is -1!
 			if (config.mountsources) {
 				s = SYNC_MOUNTSOURCES_PLS;
 				if (write(syncfd, &s, sizeof(s)) != sizeof(s)) {
@@ -1249,6 +1471,24 @@ void nsexec(void)
 					bail("failed to sync with parent: SYNC_MOUNTSOURCES_ACK: got %u", s);
 				}
 			}
+
+			/* XXX: rata. TODO: see if we want to send after/before
+			 * the mount fds? Probably the same? */
+			s = SYNC_MOUNT_IDMAP_PLS;
+			if (write(syncfd, &s, sizeof(s)) != sizeof(s)) {
+				sane_kill(stage2_pid, SIGKILL);
+				bail("failed to sync with parent: write(SYNC_MOUNT_IDMAP_PLS)");
+			}
+			/* Parent finished to send the mount sources fds. */
+			if (read(syncfd, &s, sizeof(s)) != sizeof(s)) {
+				sane_kill(stage2_pid, SIGKILL);
+				bail("failed to sync with parent: read(SYNC_MOUNT_IDMAP_ACK)");
+			}
+			if (s != SYNC_MOUNT_IDMAP_ACK) {
+				sane_kill(stage2_pid, SIGKILL);
+				bail("failed to sync with parent: SYNC_MOUNT_IDMAP_ACK: got %u", s);
+			}
+
 
 			/*
 			 * TODO: What about non-namespace clone flags that we're dropping here?
