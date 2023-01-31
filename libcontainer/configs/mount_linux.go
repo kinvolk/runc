@@ -43,3 +43,7 @@ type Mount struct {
 func (m *Mount) IsBind() bool {
 	return m.Flags&unix.MS_BIND != 0
 }
+
+func (m *Mount) IsIdMap() bool {
+	return len(m.UIDMaps) > 0 && len(m.GIDMaps) > 0
+}
