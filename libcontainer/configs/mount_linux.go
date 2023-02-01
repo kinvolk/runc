@@ -1,6 +1,10 @@
 package configs
 
-import "golang.org/x/sys/unix"
+import (
+	"golang.org/x/sys/unix"
+
+	"github.com/opencontainers/runc/libcontainer/user"
+)
 
 type Mount struct {
 	// Source path for the mount.
@@ -29,6 +33,11 @@ type Mount struct {
 
 	// Extensions are additional flags that are specific to runc.
 	Extensions int `json:"extensions"`
+
+	// UID/GID mappings used for changing file owners w/o calling chown, fs should support it.
+	// Every mount point could have its own mapping.
+	UIDMaps []user.IDMap `json:"uid_mappings"`
+	GIDMaps []user.IDMap `json:"gid_mappings"`
 }
 
 func (m *Mount) IsBind() bool {
