@@ -2221,7 +2221,11 @@ func (c *Container) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Namespa
 	// Bind mount source to open.
 	if it == initStandard && c.shouldSendMountSources() {
 		var mounts []byte
+		msgType := MountSourcesAttr
 		for _, m := range c.config.Mounts {
+			if m.IsIdMap() {
+				msgType = MountIdMappedSourcesAttr
+			}
 			if m.IsBind() {
 				if strings.IndexByte(m.Source, 0) >= 0 {
 					return nil, fmt.Errorf("mount source string contains null byte: %q", m.Source)
@@ -2232,7 +2236,7 @@ func (c *Container) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Namespa
 		}
 
 		r.AddData(&Bytemsg{
-			Type:  MountSourcesAttr,
+			Type:  msgType,
 			Value: mounts,
 		})
 	}
