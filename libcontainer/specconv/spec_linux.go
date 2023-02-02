@@ -18,6 +18,7 @@ import (
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runc/libcontainer/devices"
 	"github.com/opencontainers/runc/libcontainer/seccomp"
+	"github.com/opencontainers/runc/libcontainer/user"
 	libcontainerUtils "github.com/opencontainers/runc/libcontainer/utils"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
@@ -497,6 +498,24 @@ func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
 	return config, nil
 }
 
+func toIDMap(specMap specs.LinuxIDMapping) (user.IDMap) {
+	return user.IDMap{
+		ID:       int64(specMap.ContainerID),
+		ParentID: int64(specMap.HostID),
+		Count:    int64(specMap.Size),
+	}
+}
+
+func toIDMapArray(specMaps []specs.LinuxIDMapping) ([]user.IDMap) {
+	idmaps := make([]user.IDMap, len(specMaps))
+
+	for i, specMap := range specMaps {
+		idmaps[i] = toIDMap(specMap)
+	}
+
+	return idmaps
+}
+
 func createLibcontainerMount(cwd string, m specs.Mount) (*configs.Mount, error) {
 	if !filepath.IsAbs(m.Destination) {
 		// Relax validation for backward compatibility
@@ -518,6 +537,9 @@ func createLibcontainerMount(cwd string, m specs.Mount) (*configs.Mount, error) 
 			mnt.Source = filepath.Join(cwd, m.Source)
 		}
 	}
+
+	mnt.UIDMaps = toIDMapArray(m.UIDMappings)
+	mnt.GIDMaps = toIDMapArray(m.GIDMappings)
 
 	// None of the mount arguments can contain a null byte. Normally such
 	// strings would either cause some other failure or would just be truncated
