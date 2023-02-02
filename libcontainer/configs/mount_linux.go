@@ -36,8 +36,8 @@ type Mount struct {
 
 	// UID/GID mappings used for changing file owners w/o calling chown, fs should support it.
 	// Every mount point could have its own mapping.
-	UIDMaps []user.IDMap `json:"uid_mappings"`
-	GIDMaps []user.IDMap `json:"gid_mappings"`
+	UIDMaps []user.IDMap `json:"uidMappings"`
+	GIDMaps []user.IDMap `json:"gidMappings"`
 }
 
 func (m *Mount) IsBind() bool {
