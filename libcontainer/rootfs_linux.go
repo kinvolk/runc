@@ -77,6 +77,10 @@ func prepareRootfs(pipe io.ReadWriter, iConfig *initConfig, mountFds []int) (err
 			mountConfig.fd = nil
 		}
 
+		if m.IsIdMap() {
+			continue
+		}
+
 		if err := mountToRootfs(m, mountConfig); err != nil {
 			return fmt.Errorf("error mounting %q to rootfs at %q: %w", m.Source, m.Destination, err)
 		}

@@ -957,7 +957,7 @@ void send_mountsources(int sockfd, pid_t child, char *mountsources, size_t mount
 		bail("failed to close container mount namespace fd %d", container_mntns_fd);
 }
 
-void mount_idmap(pid_t pid)
+void mount_idmap(pid_t pid, char *mountidmappedsources, int mountidmappedsources_len)
 {
 	write_log(DEBUG, "XXX: rata. ~> mount hardcoded idmap");
 	char proc_mnt_path[PATH_MAX], proc_user_path[PATH_MAX];
@@ -981,18 +981,6 @@ void mount_idmap(pid_t pid)
 	if (setns(container_mntns_fd, CLONE_NEWNS) < 0)
 		bail("mount_idmap: failed to setns to container mntns");
 
-	/* Create the idmap mount */
-	// TODO We need to receive source from Golang code.
-	write_log(DEBUG, "XXX: rata. ~> With final slash");
-	int fd_tree = sys_open_tree(-EBADF, "/tmp/mycontainer/mnt-tmp/",
-				    OPEN_TREE_CLONE |
-				    OPEN_TREE_CLOEXEC |
-				    AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT | AT_RECURSIVE);
-	if (fd_tree < 0) {
-		write_log(DEBUG, "XXX: rata. Failed to open tree");
-		return;
-	}
-
 	ret = snprintf(proc_user_path, sizeof(proc_user_path), "/proc/%d/ns/user", pid);
 	if (ret < 0 || (size_t)ret >= sizeof(proc_user_path)) {
 		write_log(DEBUG, "XXX: rata. Failed to create userns path string");
@@ -1007,18 +995,42 @@ void mount_idmap(pid_t pid)
 		return;
 	}
 
-	// Initialize this fucking struct!
-	struct mount_attr attr = {
-		.attr_set = MOUNT_ATTR_IDMAP,
-	};
+	int fd_tree;
 
-	attr.userns_fd = userns_fd;
+	/* Create the idmap mount */
+	// TODO We need to receive source from Golang code.
+	write_log(DEBUG, "XXX: rata. ~> With final slash");
+	char *mountidmappedsources_end = mountidmappedsources + mountidmappedsources_len;
+	while (mountidmappedsources < mountidmappedsources_end) {
+		if (mountidmappedsources[0] == '\0') {
+			mountidmappedsources++;
+			continue;
+		}
 
-	ret = sys_mount_setattr(fd_tree, "", AT_EMPTY_PATH | AT_RECURSIVE, &attr, sizeof(attr));
-	if (ret < 0) {
-		write_log(DEBUG, "XXX: rata. Failed to change mount attributes: %d - %s\n", ret, strerror(errno));
-		// TODO: not leak open fds (userns_fd and fd_tree)!
-		return;
+		write_log(DEBUG, "XXX: francis. ~> About to sys_open_tree: %s", mountidmappedsources);
+		fd_tree = sys_open_tree(-EBADF, mountidmappedsources,
+					    OPEN_TREE_CLONE |
+					    OPEN_TREE_CLOEXEC |
+					    AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT | AT_RECURSIVE);
+		if (fd_tree < 0) {
+			write_log(DEBUG, "XXX: rata. Failed to open tree");
+			return;
+		}
+
+		// Initialize this fucking struct!
+		struct mount_attr attr = {
+			.attr_set = MOUNT_ATTR_IDMAP,
+			.userns_fd = userns_fd,
+		};
+
+		ret = sys_mount_setattr(fd_tree, "", AT_EMPTY_PATH | AT_RECURSIVE, &attr, sizeof(attr));
+		if (ret < 0) {
+			write_log(DEBUG, "XXX: rata. Failed to change mount attributes: %d - %s\n", ret, strerror(errno));
+			// TODO: not leak open fds (userns_fd and fd_tree)!
+			return;
+		}
+
+		mountidmappedsources += strlen(mountidmappedsources) + 1;
 	}
 
 	//TODO We need to send the fd_tree to Golang code which will move_mount to the
@@ -1294,7 +1306,8 @@ void nsexec(void)
 					}
 					break;
 				case SYNC_MOUNT_IDMAP_PLS:
-					mount_idmap(stage1_pid);
+					mount_idmap(stage1_pid, config.mountidmappedsources,
+						    config.mountidmappedsources_len);
 					s = SYNC_MOUNT_IDMAP_ACK;
 					if (write(syncfd, &s, sizeof(s)) != sizeof(s)) {
 						sane_kill(stage1_pid, SIGKILL);
