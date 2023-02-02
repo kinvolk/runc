@@ -974,6 +974,7 @@ void mount_idmap(pid_t pid)
 		bail("mount_idmap: failed to setns to container mntns");
 
 	/* Create the idmap mount */
+	// TODO We need to receive source from Golang code.
 	write_log(DEBUG, "XXX: rata. ~> With final slash");
         int fd_tree = sys_open_tree(-EBADF, "/tmp/mycontainer/mnt-tmp/",
                                 OPEN_TREE_CLONE |
@@ -1014,6 +1015,9 @@ void mount_idmap(pid_t pid)
 		// TODO: not leak open fds (userns_fd and fd_tree)!
 		return;
 	}
+
+	//TODO We need to send the fd_tree to Golang code which will move_mount to the
+	// dest.
         close(userns_fd);
 
         ret = sys_move_mount(fd_tree, "", -EBADF, "/tmp/mycontainer/rootfs-userns/tmp/mount-1/", MOVE_MOUNT_F_EMPTY_PATH);
