@@ -211,6 +211,10 @@ struct nlconfig_t {
 	/* Mount sources opened outside the container userns. */
 	char *mountsources;
 	size_t mountsources_len;
+
+	/* Mount sources opened outside the container userns which will be id mapped. */
+	char *mountidmappedsources;
+	size_t mountidmappedsources_len;
 };
 
 /*
@@ -244,6 +248,7 @@ static int loglevel = DEBUG;
 #define UIDMAPPATH_ATTR		27288
 #define GIDMAPPATH_ATTR		27289
 #define MOUNT_SOURCES_ATTR	27290
+#define MOUNT_ID_MAPPED_SOURCES_ATTR	27291
 
 /*
  * Use the raw syscall for versions of glibc which don't include a function for
@@ -670,6 +675,10 @@ static void nl_parse(int fd, struct nlconfig_t *config)
 		case MOUNT_SOURCES_ATTR:
 			config->mountsources = current;
 			config->mountsources_len = payload_len;
+			break;
+		case MOUNT_ID_MAPPED_SOURCES_ATTR:
+			config->mountidmappedsources = current;
+			config->mountidmappedsources_len = payload_len;
 			break;
 		default:
 			bail("unknown netlink message type %d", nlattr->nla_type);
