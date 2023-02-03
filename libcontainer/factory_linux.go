@@ -274,8 +274,8 @@ func validateID(id string) error {
 	return nil
 }
 
-func parseMountFds() ([]int, error) {
-	fdsJSON := os.Getenv("_LIBCONTAINER_MOUNT_FDS")
+func parsEnvFds(envVariable string) ([]int, error) {
+	fdsJSON := os.Getenv(envVariable)
 	if fdsJSON == "" {
 		// Always return the nil slice if no fd is present.
 		return nil, nil
@@ -283,23 +283,16 @@ func parseMountFds() ([]int, error) {
 
 	var mountFds []int
 	if err := json.Unmarshal([]byte(fdsJSON), &mountFds); err != nil {
-		return nil, fmt.Errorf("Error unmarshalling _LIBCONTAINER_MOUNT_FDS: %w", err)
+		return nil, fmt.Errorf("Error unmarshalling %s: %w", envVariable, err)
 	}
 
 	return mountFds, nil
 }
 
+func parseMountFds() ([]int, error) {
+	return parsEnvFds("_LIBCONTAINER_MOUNT_FDS")
+}
+
 func parseIdmapFds() ([]int, error) {
-	fdsJSON := os.Getenv("_LIBCONTAINER_IDMAP_FDS")
-	if fdsJSON == "" {
-		// Always return the nil slice if no fd is present.
-		return nil, nil
-	}
-
-	var mountFds []int
-	if err := json.Unmarshal([]byte(fdsJSON), &mountFds); err != nil {
-		return nil, fmt.Errorf("Error unmarshalling _LIBCONTAINER_IDMAP_FDS: %w", err)
-	}
-
-	return mountFds, nil
+	return parsEnvFds("_LIBCONTAINER_IDMAP_FDS")
 }
