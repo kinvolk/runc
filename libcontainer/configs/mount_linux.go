@@ -44,6 +44,7 @@ func (m *Mount) IsBind() bool {
 	return m.Flags&unix.MS_BIND != 0
 }
 
+// TODO: rename to IsIDMap(). We are using capital ID in other parts.
 func (m *Mount) IsIdMap() bool {
-	return len(m.UIDMaps) > 0 && len(m.GIDMaps) > 0
+	return m.IsBind() && (len(m.UIDMaps) > 0 || len(m.GIDMaps) > 0)
 }
