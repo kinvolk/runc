@@ -866,26 +866,26 @@ void send_fd(int sockfd, int fd)
 		bail("failed to send fd %d via unix socket %d", fd, sockfd);
 }
 
-void receive_mountsources(int sockfd)
+void receive_from_env(int sockfd, char *env_variable)
 {
 	char *mount_fds, *endp;
 	long new_fd;
 
 	// This env var must be a json array of ints.
-	mount_fds = getenv("_LIBCONTAINER_MOUNT_FDS");
+	mount_fds = getenv(env_variable);
 
 	if (mount_fds[0] != '[') {
-		bail("malformed _LIBCONTAINER_MOUNT_FDS env var: missing '['");
+		bail("malformed %s env var: missing '['", env_variable);
 	}
 	mount_fds++;
 
 	for (endp = mount_fds; *endp != ']'; mount_fds = endp + 1) {
 		new_fd = strtol(mount_fds, &endp, 10);
 		if (endp == mount_fds) {
-			bail("malformed _LIBCONTAINER_MOUNT_FDS env var: not a number");
+			bail("malformed %s env var: not a number", env_variable);
 		}
 		if (*endp == '\0') {
-			bail("malformed _LIBCONTAINER_MOUNT_FDS env var: missing ]");
+			bail("malformed %s env var: missing ]", env_variable);
 		}
 		// The list contains -1 when no fd is needed. Ignore them.
 		if (new_fd == -1) {
@@ -893,11 +893,15 @@ void receive_mountsources(int sockfd)
 		}
 
 		if (new_fd == LONG_MAX || new_fd < 0 || new_fd > INT_MAX) {
-			bail("malformed _LIBCONTAINER_MOUNT_FDS env var: fds out of range");
+			bail("malformed %s env var: fds out of range", env_variable);
 		}
 
 		receive_fd(sockfd, new_fd);
 	}
+}
+void receive_mountsources(int sockfd)
+{
+	receive_from_env(sockfd, "_LIBCONTAINER_MOUNT_FDS");
 }
 
 void send_mountsources(int sockfd, pid_t child, char *mountsources, size_t mountsources_len)
@@ -1065,36 +1069,7 @@ void mount_idmap(int sockfd, pid_t pid, char *mountidmappedsources, int mountidm
 
 void receive_idmapsources(int sockfd)
 {
-	char *idmap_fds, *endp;
-	long new_fd;
-
-	// This env var must be a json array of ints.
-	idmap_fds = getenv("_LIBCONTAINER_IDMAP_FDS");
-
-	if (idmap_fds[0] != '[') {
-		bail("malformed _LIBCONTAINER_IDMAP_FDS env var: missing '['");
-	}
-	idmap_fds++;
-
-	for (endp = idmap_fds; *endp != ']'; idmap_fds = endp + 1) {
-		new_fd = strtol(idmap_fds, &endp, 10);
-		if (endp == idmap_fds) {
-			bail("malformed _LIBCONTAINER_IDMAP_FDS env var: not a number");
-		}
-		if (*endp == '\0') {
-			bail("malformed _LIBCONTAINER_IDMAP_FDS env var: missing ]");
-		}
-		// The list contains -1 when no fd is needed. Ignore them.
-		if (new_fd == -1) {
-			continue;
-		}
-
-		if (new_fd == LONG_MAX || new_fd < 0 || new_fd > INT_MAX) {
-			bail("malformed _LIBCONTAINER_IDMAP_FDS env var: fds out of range");
-		}
-
-		receive_fd(sockfd, new_fd);
-	}
+	receive_from_env(sockfd, "_LIBCONTAINER_IDMAP_FDS");
 }
 
 
