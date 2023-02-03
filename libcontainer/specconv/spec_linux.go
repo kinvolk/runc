@@ -498,7 +498,7 @@ func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
 	return config, nil
 }
 
-func toIDMap(specMap specs.LinuxIDMapping) (user.IDMap) {
+func toIDMap(specMap specs.LinuxIDMapping) user.IDMap {
 	return user.IDMap{
 		ID:       int64(specMap.ContainerID),
 		ParentID: int64(specMap.HostID),
@@ -506,7 +506,7 @@ func toIDMap(specMap specs.LinuxIDMapping) (user.IDMap) {
 	}
 }
 
-func toIDMapArray(specMaps []specs.LinuxIDMapping) ([]user.IDMap) {
+func toIDMapArray(specMaps []specs.LinuxIDMapping) []user.IDMap {
 	idmaps := make([]user.IDMap, len(specMaps))
 
 	for i, specMap := range specMaps {
@@ -538,6 +538,7 @@ func createLibcontainerMount(cwd string, m specs.Mount) (*configs.Mount, error) 
 		}
 	}
 
+	// XXX: rata. TODO: Rename (is not an array) and review if this is all.
 	mnt.UIDMaps = toIDMapArray(m.UIDMappings)
 	mnt.GIDMaps = toIDMapArray(m.GIDMappings)
 
