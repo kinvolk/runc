@@ -217,6 +217,12 @@ func StartInitialization() (err error) {
 		return err
 	}
 
+	// Get idmap fds.
+	idmapFds, err := parseIdmapFds()
+	if err != nil {
+		return err
+	}
+
 	// clear the current process's environment to clean any libcontainer
 	// specific env vars.
 	os.Clearenv()
@@ -231,7 +237,7 @@ func StartInitialization() (err error) {
 		}
 	}()
 
-	i, err := newContainerInit(it, pipe, consoleSocket, fifofd, logPipeFd, mountFds)
+	i, err := newContainerInit(it, pipe, consoleSocket, fifofd, logPipeFd, mountFds, idmapFds)
 	if err != nil {
 		return err
 	}
@@ -278,6 +284,21 @@ func parseMountFds() ([]int, error) {
 	var mountFds []int
 	if err := json.Unmarshal([]byte(fdsJSON), &mountFds); err != nil {
 		return nil, fmt.Errorf("Error unmarshalling _LIBCONTAINER_MOUNT_FDS: %w", err)
+	}
+
+	return mountFds, nil
+}
+
+func parseIdmapFds() ([]int, error) {
+	fdsJSON := os.Getenv("_LIBCONTAINER_IDMAP_FDS")
+	if fdsJSON == "" {
+		// Always return the nil slice if no fd is present.
+		return nil, nil
+	}
+
+	var mountFds []int
+	if err := json.Unmarshal([]byte(fdsJSON), &mountFds); err != nil {
+		return nil, fmt.Errorf("Error unmarshalling _LIBCONTAINER_IDMAP_FDS: %w", err)
 	}
 
 	return mountFds, nil

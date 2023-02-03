@@ -518,9 +518,38 @@ func (c *Container) shouldSendMountSources() bool {
 		return false
 	}
 
-	// We need to send sources if there are bind-mounts.
+	// We need to send sources if there are non-idmap bind-mounts.
 	for _, m := range c.config.Mounts {
-		if m.IsBind() {
+		if m.IsBind() && !m.IsIdMap() {
+			return true
+		}
+	}
+
+	return false
+}
+
+// shouldSendIdmapSources says whether the child process must setup idmap mounts with
+// the mount_setattr already done in the host user namespace.
+func (c *Container) shouldSendIdmapSources() bool {
+	// Passing the sources via SCM_RIGHTS is only necessary when both userns
+	// and mntns are active.
+	// TODO: We should limit for now that idmap mounts are used only when
+	// userns is used.
+	if !c.config.Namespaces.Contains(configs.NEWUSER) ||
+		!c.config.Namespaces.Contains(configs.NEWNS) {
+		return false
+	}
+
+	// TODO: we require this too.
+	// nsexec.c send_mountsources() requires setns(mntns) capabilities
+	// CAP_SYS_CHROOT and CAP_SYS_ADMIN.
+	if c.config.RootlessEUID {
+		return false
+	}
+
+	// We need to send sources if there are idmap bind-mounts.
+	for _, m := range c.config.Mounts {
+		if m.IsIdMap() {
 			return true
 		}
 	}
@@ -542,6 +571,7 @@ func (c *Container) newInitProcess(p *Process, cmd *exec.Cmd, messageSockPair, l
 		return nil, err
 	}
 
+	// TODO: Change this function or duplicate for idmap sources?
 	if c.shouldSendMountSources() {
 		// Elements on this slice will be paired with mounts (see StartInitialization() and
 		// prepareRootfs()). This slice MUST have the same size as c.config.Mounts.
@@ -568,6 +598,35 @@ func (c *Container) newInitProcess(p *Process, cmd *exec.Cmd, messageSockPair, l
 
 		cmd.Env = append(cmd.Env,
 			"_LIBCONTAINER_MOUNT_FDS="+string(mountFdsJson),
+		)
+	}
+
+	if c.shouldSendIdmapSources() {
+		// Prepare idmap mounts.
+		idmapFds := make([]int, len(c.config.Mounts))
+		for i, m := range c.config.Mounts {
+			if !m.IsIdMap() {
+				// Only idmap bind-mounts need the idmap mount.
+				idmapFds[i] = -1
+				continue
+			}
+
+			// XXX: rata. Verify if this is still true
+			// The fd passed here will not be used: nsexec.c will overwrite it with dup3(). We just need
+			// to allocate a fd so that we know the number to pass in the environment variable. The fd
+			// must not be closed before cmd.Start(), so we reuse messageSockPair.child because the
+			// lifecycle of that fd is already taken care of.
+			cmd.ExtraFiles = append(cmd.ExtraFiles, messageSockPair.child)
+			idmapFds[i] = stdioFdCount + len(cmd.ExtraFiles) - 1
+		}
+
+		idmapFdsJson, err := json.Marshal(idmapFds)
+		if err != nil {
+			return nil, fmt.Errorf("Error creating _LIBCONTAINER_IDMAP_FDS: %w", err)
+		}
+
+		cmd.Env = append(cmd.Env,
+			"_LIBCONTAINER_IDMAP_FDS="+string(idmapFdsJson),
 		)
 	}
 
@@ -2221,12 +2280,8 @@ func (c *Container) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Namespa
 	// Bind mount source to open.
 	if it == initStandard && c.shouldSendMountSources() {
 		var mounts []byte
-		msgType := MountSourcesAttr
 		for _, m := range c.config.Mounts {
-			if m.IsIdMap() {
-				msgType = MountIdMappedSourcesAttr
-			}
-			if m.IsBind() {
+			if m.IsBind() && !m.IsIdMap() {
 				if strings.IndexByte(m.Source, 0) >= 0 {
 					return nil, fmt.Errorf("mount source string contains null byte: %q", m.Source)
 				}
@@ -2236,7 +2291,26 @@ func (c *Container) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Namespa
 		}
 
 		r.AddData(&Bytemsg{
-			Type:  msgType,
+			Type:  MountSourcesAttr,
+			Value: mounts,
+		})
+	}
+
+	// Idmap mount sources to open.
+	if it == initStandard && c.shouldSendIdmapSources() {
+		var mounts []byte
+		for _, m := range c.config.Mounts {
+			if m.IsIdMap() {
+				if strings.IndexByte(m.Source, 0) >= 0 {
+					return nil, fmt.Errorf("mount source string contains null byte: %q", m.Source)
+				}
+				mounts = append(mounts, []byte(m.Source)...)
+			}
+			mounts = append(mounts, byte(0))
+		}
+
+		r.AddData(&Bytemsg{
+			Type:  MountIdMappedSourcesAttr,
 			Value: mounts,
 		})
 	}

@@ -35,6 +35,7 @@ type mountConfig struct {
 	rootlessCgroups bool
 	cgroupns        bool
 	fd              *int
+	idmapFd         *int
 }
 
 // needsSetupDev returns true if /dev needs to be set up.
@@ -50,7 +51,7 @@ func needsSetupDev(config *configs.Config) bool {
 // prepareRootfs sets up the devices, mount points, and filesystems for use
 // inside a new mount namespace. It doesn't set anything as ro. You must call
 // finalizeRootfs after this function to finish setting up the rootfs.
-func prepareRootfs(pipe io.ReadWriter, iConfig *initConfig, mountFds []int) (err error) {
+func prepareRootfs(pipe io.ReadWriter, iConfig *initConfig, mountFds, idmapFds []int) (err error) {
 	config := iConfig.Config
 	if err := prepareRoot(config); err != nil {
 		return fmt.Errorf("error preparing rootfs: %w", err)
@@ -58,6 +59,10 @@ func prepareRootfs(pipe io.ReadWriter, iConfig *initConfig, mountFds []int) (err
 
 	if mountFds != nil && len(mountFds) != len(config.Mounts) {
 		return fmt.Errorf("malformed mountFds slice. Expected size: %v, got: %v. Slice: %v", len(config.Mounts), len(mountFds), mountFds)
+	}
+
+	if idmapFds != nil && len(idmapFds) != len(config.Mounts) {
+		return fmt.Errorf("malformed idmapFds slice. Expected size: %v, got: %v. Slice: %v", len(config.Mounts), len(idmapFds), idmapFds)
 	}
 
 	mountConfig := &mountConfig{
@@ -77,9 +82,19 @@ func prepareRootfs(pipe io.ReadWriter, iConfig *initConfig, mountFds []int) (err
 			mountConfig.fd = nil
 		}
 
-		if m.IsIdMap() {
-			continue
+		mountConfig.idmapFd = nil
+		if idmapFds != nil && idmapFds[i] != -1 {
+			mountConfig.idmapFd = &idmapFds[i]
 		}
+
+		if mountConfig.idmapFd != nil && mountConfig.fd != nil {
+			return fmt.Errorf("malformed mountFds and idmapFds slice. Entry: %v has fds in boths array. One must be -1", i)
+		}
+
+		// XXX: rata. TODO remove this properly.
+		//if m.IsIdMap() {
+		//	continue
+		//}
 
 		if err := mountToRootfs(m, mountConfig); err != nil {
 			return fmt.Errorf("error mounting %q to rootfs at %q: %w", m.Source, m.Destination, err)
@@ -381,6 +396,7 @@ func mountToRootfs(m *configs.Mount, c *mountConfig) error {
 	rootfs := c.root
 	mountLabel := c.label
 	mountFd := c.fd
+	idmapFd := c.idmapFd
 	dest, err := securejoin.SecureJoin(rootfs, m.Destination)
 	if err != nil {
 		return err
@@ -441,8 +457,17 @@ func mountToRootfs(m *configs.Mount, c *mountConfig) error {
 		if err := prepareBindMount(m, rootfs, mountFd); err != nil {
 			return err
 		}
-		if err := mountPropagate(m, rootfs, mountLabel, mountFd); err != nil {
-			return err
+
+		if m.IsIdMap() {
+			// TODO: In the C code uses -EBADF as 3rd param. Do we want to revisit this?
+			// TODO: assert idmapFd is not nil
+			if err = unix.MoveMount(*idmapFd, "", unix.AT_FDCWD, dest, unix.MOVE_MOUNT_F_EMPTY_PATH); err != nil {
+				return fmt.Errorf("error on unix.MoveMount: %v", err)
+			}
+		} else {
+			if err := mountPropagate(m, rootfs, mountLabel, mountFd); err != nil {
+				return err
+			}
 		}
 		// bind mount won't change mount options, we need remount to make mount options effective.
 		// first check that we have non-default options required before attempting a remount

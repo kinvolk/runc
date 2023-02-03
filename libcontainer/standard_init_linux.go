@@ -26,6 +26,7 @@ type linuxStandardInit struct {
 	fifoFd        int
 	logFd         int
 	mountFds      []int
+	idmapFds      []int
 	config        *initConfig
 }
 
@@ -87,7 +88,7 @@ func (l *linuxStandardInit) Init() error {
 	selinux.GetEnabled()
 
 	// We don't need the mountFds after prepareRootfs() nor if it fails.
-	err := prepareRootfs(l.pipe, l.config, l.mountFds)
+	err := prepareRootfs(l.pipe, l.config, l.mountFds, l.idmapFds)
 	for _, m := range l.mountFds {
 		if m == -1 {
 			continue

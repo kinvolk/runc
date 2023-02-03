@@ -211,7 +211,8 @@ struct nlconfig_t {
 	char *mountsources;
 	size_t mountsources_len;
 
-	/* Mount sources opened outside the container userns which will be id mapped. */
+	/* Moun	t sources opened outside the container userns which will be id mapped. */
+	// TODO: simplify this name. idmapsources?
 	char *mountidmappedsources;
 	size_t mountidmappedsources_len;
 };
@@ -957,7 +958,7 @@ void send_mountsources(int sockfd, pid_t child, char *mountsources, size_t mount
 		bail("failed to close container mount namespace fd %d", container_mntns_fd);
 }
 
-void mount_idmap(pid_t pid, char *mountidmappedsources, int mountidmappedsources_len)
+void mount_idmap(int sockfd, pid_t pid, char *mountidmappedsources, int mountidmappedsources_len)
 {
 	write_log(DEBUG, "XXX: rata. ~> mount hardcoded idmap");
 	char proc_mnt_path[PATH_MAX], proc_user_path[PATH_MAX];
@@ -1029,15 +1030,18 @@ void mount_idmap(pid_t pid, char *mountidmappedsources, int mountidmappedsources
 			return;
 		}
 
+		send_fd(sockfd, fd_tree);
+
 		//TODO We need to send the fd_tree to Golang code which will move_mount to the
 		// dest.
 		close(userns_fd);
-		ret =
-		    sys_move_mount(fd_tree, "", -EBADF, "/tmp/mycontainer/rootfs-userns/tmp/mount-1/", MOVE_MOUNT_F_EMPTY_PATH);
-		if (ret < 0) {
-			write_log(DEBUG, "XXX: rata. Failed to attach mount to dst.\n");
-			return;
-		}
+		write_log(DEBUG, "XXX: rata. SKIPPING move_mount");
+		//ret =
+		//    sys_move_mount(fd_tree, "", -EBADF, "/home/rodrigo/src/github.com/opencontainers/mycontainer/rootfs-userns/tmp/mount-1/", MOVE_MOUNT_F_EMPTY_PATH);
+		//if (ret < 0) {
+		//	write_log(DEBUG, "XXX: rata. Failed to attach mount to dst.\n");
+		//	return;
+		//}
 		close(fd_tree);
 
 
@@ -1058,6 +1062,41 @@ void mount_idmap(pid_t pid, char *mountidmappedsources, int mountidmappedsources
 
 	write_log(DEBUG, "XXX: rata. ~> IDMAP MOUNT OK!");
 }
+
+void receive_idmapsources(int sockfd)
+{
+	char *idmap_fds, *endp;
+	long new_fd;
+
+	// This env var must be a json array of ints.
+	idmap_fds = getenv("_LIBCONTAINER_IDMAP_FDS");
+
+	if (idmap_fds[0] != '[') {
+		bail("malformed _LIBCONTAINER_IDMAP_FDS env var: missing '['");
+	}
+	idmap_fds++;
+
+	for (endp = idmap_fds; *endp != ']'; idmap_fds = endp + 1) {
+		new_fd = strtol(idmap_fds, &endp, 10);
+		if (endp == idmap_fds) {
+			bail("malformed _LIBCONTAINER_IDMAP_FDS env var: not a number");
+		}
+		if (*endp == '\0') {
+			bail("malformed _LIBCONTAINER_IDMAP_FDS env var: missing ]");
+		}
+		// The list contains -1 when no fd is needed. Ignore them.
+		if (new_fd == -1) {
+			continue;
+		}
+
+		if (new_fd == LONG_MAX || new_fd < 0 || new_fd > INT_MAX) {
+			bail("malformed _LIBCONTAINER_IDMAP_FDS env var: fds out of range");
+		}
+
+		receive_fd(sockfd, new_fd);
+	}
+}
+
 
 void nsexec(void)
 {
@@ -1306,7 +1345,7 @@ void nsexec(void)
 					}
 					break;
 				case SYNC_MOUNT_IDMAP_PLS:
-					mount_idmap(stage1_pid, config.mountidmappedsources,
+					mount_idmap(syncfd, stage1_pid, config.mountidmappedsources,
 						    config.mountidmappedsources_len);
 					s = SYNC_MOUNT_IDMAP_ACK;
 					if (write(syncfd, &s, sizeof(s)) != sizeof(s)) {
@@ -1372,6 +1411,10 @@ void nsexec(void)
 	case STAGE_CHILD:{
 			pid_t stage2_pid = -1;
 			enum sync_t s;
+
+			// TODO: rata. If we open the sources here? Oh, no, we
+			// need the netlink data, that is sent to the parent,
+			// right?
 
 			/* We're in a child and thus need to tell the parent if we die. */
 			syncfd = sync_child_pipe[0];
@@ -1497,19 +1540,25 @@ void nsexec(void)
 
 			/* XXX: rata. TODO: see if we want to send after/before
 			 * the mount fds? Probably the same? */
-			s = SYNC_MOUNT_IDMAP_PLS;
-			if (write(syncfd, &s, sizeof(s)) != sizeof(s)) {
-				sane_kill(stage2_pid, SIGKILL);
-				bail("failed to sync with parent: write(SYNC_MOUNT_IDMAP_PLS)");
-			}
-			/* Parent finished to send the mount sources fds. */
-			if (read(syncfd, &s, sizeof(s)) != sizeof(s)) {
-				sane_kill(stage2_pid, SIGKILL);
-				bail("failed to sync with parent: read(SYNC_MOUNT_IDMAP_ACK)");
-			}
-			if (s != SYNC_MOUNT_IDMAP_ACK) {
-				sane_kill(stage2_pid, SIGKILL);
-				bail("failed to sync with parent: SYNC_MOUNT_IDMAP_ACK: got %u", s);
+			if (config.mountidmappedsources) {
+				s = SYNC_MOUNT_IDMAP_PLS;
+				if (write(syncfd, &s, sizeof(s)) != sizeof(s)) {
+					sane_kill(stage2_pid, SIGKILL);
+					bail("failed to sync with parent: write(SYNC_MOUNT_IDMAP_PLS)");
+				}
+
+				/* Receive and install all mount sources fds. */
+				receive_idmapsources(syncfd);
+
+				/* Parent finished to send the mount sources fds. */
+				if (read(syncfd, &s, sizeof(s)) != sizeof(s)) {
+					sane_kill(stage2_pid, SIGKILL);
+					bail("failed to sync with parent: read(SYNC_MOUNT_IDMAP_ACK)");
+				}
+				if (s != SYNC_MOUNT_IDMAP_ACK) {
+					sane_kill(stage2_pid, SIGKILL);
+					bail("failed to sync with parent: SYNC_MOUNT_IDMAP_ACK: got %u", s);
+				}
 			}
 
 
