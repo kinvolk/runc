@@ -91,11 +91,6 @@ func prepareRootfs(pipe io.ReadWriter, iConfig *initConfig, mountFds, idmapFds [
 			return fmt.Errorf("malformed mountFds and idmapFds slice. Entry: %v has fds in boths array. One must be -1", i)
 		}
 
-		// XXX: rata. TODO remove this properly.
-		//if m.IsIdMap() {
-		//	continue
-		//}
-
 		if err := mountToRootfs(m, mountConfig); err != nil {
 			return fmt.Errorf("error mounting %q to rootfs at %q: %w", m.Source, m.Destination, err)
 		}
