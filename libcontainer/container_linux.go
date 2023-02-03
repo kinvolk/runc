@@ -501,10 +501,7 @@ func (c *Container) commandTemplate(p *Process, childInitPipe *os.File, childLog
 	return cmd
 }
 
-// shouldSendMountSources says whether the child process must setup bind mounts with
-// the source pre-opened (O_PATH) in the host user namespace.
-// See https://github.com/opencontainers/runc/issues/2484
-func (c *Container) shouldSendMountSources() bool {
+func (c *Container) shouldSend() bool {
 	// Passing the mount sources via SCM_RIGHTS is only necessary when
 	// both userns and mntns are active.
 	if !c.config.Namespaces.Contains(configs.NEWUSER) ||
@@ -515,6 +512,17 @@ func (c *Container) shouldSendMountSources() bool {
 	// nsexec.c send_mountsources() requires setns(mntns) capabilities
 	// CAP_SYS_CHROOT and CAP_SYS_ADMIN.
 	if c.config.RootlessEUID {
+		return false
+	}
+
+	return true
+}
+
+// shouldSendMountSources says whether the child process must setup bind mounts with
+// the source pre-opened (O_PATH) in the host user namespace.
+// See https://github.com/opencontainers/runc/issues/2484
+func (c *Container) shouldSendMountSources() bool {
+	if !c.shouldSend() {
 		return false
 	}
 
@@ -531,19 +539,7 @@ func (c *Container) shouldSendMountSources() bool {
 // shouldSendIdmapSources says whether the child process must setup idmap mounts with
 // the mount_setattr already done in the host user namespace.
 func (c *Container) shouldSendIdmapSources() bool {
-	// Passing the sources via SCM_RIGHTS is only necessary when both userns
-	// and mntns are active.
-	// TODO: We should limit for now that idmap mounts are used only when
-	// userns is used.
-	if !c.config.Namespaces.Contains(configs.NEWUSER) ||
-		!c.config.Namespaces.Contains(configs.NEWNS) {
-		return false
-	}
-
-	// TODO: we require this too.
-	// nsexec.c send_mountsources() requires setns(mntns) capabilities
-	// CAP_SYS_CHROOT and CAP_SYS_ADMIN.
-	if c.config.RootlessEUID {
+	if !c.shouldSend() {
 		return false
 	}
 
