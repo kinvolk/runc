@@ -995,7 +995,6 @@ void mount_idmap(pid_t pid, char *mountidmappedsources, int mountidmappedsources
 		return;
 	}
 
-	int fd_tree;
 
 	/* Create the idmap mount */
 	// TODO We need to receive source from Golang code.
@@ -1008,7 +1007,7 @@ void mount_idmap(pid_t pid, char *mountidmappedsources, int mountidmappedsources
 		}
 
 		write_log(DEBUG, "XXX: francis. ~> About to sys_open_tree: %s", mountidmappedsources);
-		fd_tree = sys_open_tree(-EBADF, mountidmappedsources,
+		int fd_tree = sys_open_tree(-EBADF, mountidmappedsources,
 					    OPEN_TREE_CLONE |
 					    OPEN_TREE_CLOEXEC |
 					    AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT | AT_RECURSIVE);
@@ -1030,20 +1029,21 @@ void mount_idmap(pid_t pid, char *mountidmappedsources, int mountidmappedsources
 			return;
 		}
 
+		//TODO We need to send the fd_tree to Golang code which will move_mount to the
+		// dest.
+		close(userns_fd);
+		ret =
+		    sys_move_mount(fd_tree, "", -EBADF, "/tmp/mycontainer/rootfs-userns/tmp/mount-1/", MOVE_MOUNT_F_EMPTY_PATH);
+		if (ret < 0) {
+			write_log(DEBUG, "XXX: rata. Failed to attach mount to dst.\n");
+			return;
+		}
+		close(fd_tree);
+
+
 		mountidmappedsources += strlen(mountidmappedsources) + 1;
 	}
 
-	//TODO We need to send the fd_tree to Golang code which will move_mount to the
-	// dest.
-	close(userns_fd);
-
-	ret =
-	    sys_move_mount(fd_tree, "", -EBADF, "/tmp/mycontainer/rootfs-userns/tmp/mount-1/", MOVE_MOUNT_F_EMPTY_PATH);
-	if (ret < 0) {
-		write_log(DEBUG, "XXX: rata. Failed to attach mount to dst.\n");
-		return;
-	}
-	close(fd_tree);
 
 	/* Join the host mnnt ns again */
 	if (setns(host_mntns_fd, CLONE_NEWNS) < 0)
