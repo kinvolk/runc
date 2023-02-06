@@ -958,13 +958,14 @@ void send_mountsources(int sockfd, pid_t child, char *mountsources, size_t mount
 		bail("failed to close container mount namespace fd %d", container_mntns_fd);
 }
 
-void mount_idmap(int sockfd, pid_t pid, char *mountidmappedsources, int mountidmappedsources_len)
+void mount_idmap(int sockfd, pid_t pid, char *idmap_src, int mountidmappedsources_len)
 {
 	write_log(DEBUG, "XXX: rata. ~> mount hardcoded idmap");
 	char proc_mnt_path[PATH_MAX], proc_user_path[PATH_MAX];
 
-	/* Join the container mount namespace so we mount there and keep a
-	 * reference to the current mnt ns so we come back afterwards.
+	/* XXX: rata. TODO: this is not needed. Double check why and then
+	 * remove!
+	 * Join the container mount namespace.
 	 */
 	int host_mntns_fd = open("/proc/self/ns/mnt", O_RDONLY | O_CLOEXEC);
 	if (host_mntns_fd == -1)
@@ -996,19 +997,17 @@ void mount_idmap(int sockfd, pid_t pid, char *mountidmappedsources, int mountidm
 		return;
 	}
 
-
 	/* Create the idmap mount */
-	// TODO We need to receive source from Golang code.
 	write_log(DEBUG, "XXX: rata. ~> With final slash");
-	char *mountidmappedsources_end = mountidmappedsources + mountidmappedsources_len;
-	while (mountidmappedsources < mountidmappedsources_end) {
-		if (mountidmappedsources[0] == '\0') {
-			mountidmappedsources++;
+	char *mountidmappedsources_end = idmap_src + mountidmappedsources_len;
+	while (idmap_src < mountidmappedsources_end) {
+		if (idmap_src[0] == '\0') {
+			idmap_src++;
 			continue;
 		}
 
-		write_log(DEBUG, "XXX: francis. ~> About to sys_open_tree: %s", mountidmappedsources);
-		int fd_tree = sys_open_tree(-EBADF, mountidmappedsources,
+		write_log(DEBUG, "XXX: francis. ~> About to sys_open_tree: %s", idmap_src);
+		int fd_tree = sys_open_tree(-EBADF, idmap_src,
 					    OPEN_TREE_CLONE |
 					    OPEN_TREE_CLOEXEC |
 					    AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT | AT_RECURSIVE);
@@ -1044,8 +1043,7 @@ void mount_idmap(int sockfd, pid_t pid, char *mountidmappedsources, int mountidm
 		//}
 		close(fd_tree);
 
-
-		mountidmappedsources += strlen(mountidmappedsources) + 1;
+		idmap_src += strlen(idmap_src) + 1;
 	}
 
 

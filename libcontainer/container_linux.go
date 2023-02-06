@@ -2304,6 +2304,9 @@ func (c *Container) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Namespa
 				if strings.IndexByte(m.Source, 0) >= 0 {
 					return nil, fmt.Errorf("mount source string contains null byte: %q", m.Source)
 				}
+				// TODO: error out if the mapping is not the
+				// same as the one used for the userns.
+				// This is a current limitation for now.
 				mounts = append(mounts, []byte(m.Source)...)
 			}
 			mounts = append(mounts, byte(0))
