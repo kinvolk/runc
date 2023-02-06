@@ -958,63 +958,34 @@ void send_mountsources(int sockfd, pid_t child, char *mountsources, size_t mount
 		bail("failed to close container mount namespace fd %d", container_mntns_fd);
 }
 
-void mount_idmap(int sockfd, pid_t pid, char *idmap_src, int mountidmappedsources_len)
+void mount_idmap(int sockfd, pid_t pid, char *idmap_src, int idmap_src_len)
 {
-	write_log(DEBUG, "XXX: rata. ~> mount hardcoded idmap");
-	char proc_mnt_path[PATH_MAX], proc_user_path[PATH_MAX];
+	char proc_user_path[PATH_MAX];
 
-	/* XXX: rata. TODO: this is not needed. Double check why and then
-	 * remove!
-	 * Join the container mount namespace.
-	 */
-	int host_mntns_fd = open("/proc/self/ns/mnt", O_RDONLY | O_CLOEXEC);
-	if (host_mntns_fd == -1)
-		bail("mount_idmap: failed to get current mount namespace");
+	int ret = snprintf(proc_user_path, sizeof(proc_user_path), "/proc/%d/ns/user", pid);
+	if (ret < 0 || (size_t)ret >= sizeof(proc_user_path))
+		bail("failed to create userns path string");
 
-	int ret = snprintf(proc_mnt_path, sizeof(proc_mnt_path), "/proc/%d/ns/mnt", pid);
-	if (ret < 0 || (size_t)ret >= sizeof(proc_mnt_path))
-		bail("mount_idmap: failed to get mount namespace path");
-
-	write_log(DEBUG, "XXX: rata. ~> proc_mnt_path is: %s", proc_mnt_path);
-	int container_mntns_fd = open(proc_mnt_path, O_RDONLY | O_CLOEXEC);
-	if (container_mntns_fd == -1)
-		bail("mount_idmap: failed to get container mount namespace");
-
-	if (setns(container_mntns_fd, CLONE_NEWNS) < 0)
-		bail("mount_idmap: failed to setns to container mntns");
-
-	ret = snprintf(proc_user_path, sizeof(proc_user_path), "/proc/%d/ns/user", pid);
-	if (ret < 0 || (size_t)ret >= sizeof(proc_user_path)) {
-		write_log(DEBUG, "XXX: rata. Failed to create userns path string");
-		return;
-	}
-
-	write_log(DEBUG, "XXX: rata. path_ns is: %s", proc_user_path);
-
+	write_log(DEBUG, "open userns fd: %s", proc_user_path);
 	int userns_fd = open(proc_user_path, O_RDONLY | O_CLOEXEC | O_NOCTTY);
-	if (userns_fd < 0) {
-		write_log(DEBUG, "XXX: rata. Failed to get user namespace fd");
-		return;
-	}
+	if (userns_fd < 0)
+		bail("failed to get user namespace fd");
 
 	/* Create the idmap mount */
-	write_log(DEBUG, "XXX: rata. ~> With final slash");
-	char *mountidmappedsources_end = idmap_src + mountidmappedsources_len;
+	char *mountidmappedsources_end = idmap_src + idmap_src_len;
 	while (idmap_src < mountidmappedsources_end) {
 		if (idmap_src[0] == '\0') {
 			idmap_src++;
 			continue;
 		}
 
-		write_log(DEBUG, "XXX: francis. ~> About to sys_open_tree: %s", idmap_src);
+		write_log(DEBUG, "open_tree source: %s", idmap_src);
 		int fd_tree = sys_open_tree(-EBADF, idmap_src,
 					    OPEN_TREE_CLONE |
 					    OPEN_TREE_CLOEXEC |
 					    AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT | AT_RECURSIVE);
-		if (fd_tree < 0) {
-			write_log(DEBUG, "XXX: rata. Failed to open tree");
-			return;
-		}
+		if (fd_tree < 0)
+			bail("failed to open tree for path %s", idmap_src);
 
 		// Initialize this fucking struct!
 		struct mount_attr attr = {
@@ -1022,43 +993,20 @@ void mount_idmap(int sockfd, pid_t pid, char *idmap_src, int mountidmappedsource
 			.userns_fd = userns_fd,
 		};
 
+		write_log(DEBUG, "mount_setattr with userns fd: %s", proc_user_path);
 		ret = sys_mount_setattr(fd_tree, "", AT_EMPTY_PATH | AT_RECURSIVE, &attr, sizeof(attr));
-		if (ret < 0) {
-			write_log(DEBUG, "XXX: rata. Failed to change mount attributes: %d - %s\n", ret, strerror(errno));
-			// TODO: not leak open fds (userns_fd and fd_tree)!
-			return;
-		}
+		if (ret < 0)
+			bail("failed to change mount attributes");
 
 		send_fd(sockfd, fd_tree);
 
-		//TODO We need to send the fd_tree to Golang code which will move_mount to the
-		// dest.
-		close(userns_fd);
-		write_log(DEBUG, "XXX: rata. SKIPPING move_mount");
-		//ret =
-		//    sys_move_mount(fd_tree, "", -EBADF, "/home/rodrigo/src/github.com/opencontainers/mycontainer/rootfs-userns/tmp/mount-1/", MOVE_MOUNT_F_EMPTY_PATH);
-		//if (ret < 0) {
-		//	write_log(DEBUG, "XXX: rata. Failed to attach mount to dst.\n");
-		//	return;
-		//}
-		close(fd_tree);
+		if (close(userns_fd) < 0)
+			bail("error closing userns fd");
+		if (close(fd_tree) < 0)
+			bail("error closing fd_tree");
 
 		idmap_src += strlen(idmap_src) + 1;
 	}
-
-
-	/* Join the host mnnt ns again */
-	if (setns(host_mntns_fd, CLONE_NEWNS) < 0)
-		bail("mount_idmap: failed to setns to host mntns");
-
-	ret = close(host_mntns_fd);
-	if (ret != 0)
-		bail("mount_idmap: failed to close host mount namespace fd %d", host_mntns_fd);
-	ret = close(container_mntns_fd);
-	if (ret != 0)
-		bail("mount_idmap: failed to close container mount namespace fd %d", container_mntns_fd);
-
-	write_log(DEBUG, "XXX: rata. ~> IDMAP MOUNT OK!");
 }
 
 void receive_idmapsources(int sockfd)
@@ -1539,6 +1487,7 @@ void nsexec(void)
 			/* XXX: rata. TODO: see if we want to send after/before
 			 * the mount fds? Probably the same? */
 			if (config.mountidmappedsources) {
+				write_log(DEBUG, "request stage-0 to send idmap sources");
 				s = SYNC_MOUNT_IDMAP_PLS;
 				if (write(syncfd, &s, sizeof(s)) != sizeof(s)) {
 					sane_kill(stage2_pid, SIGKILL);
@@ -1548,6 +1497,7 @@ void nsexec(void)
 				/* Receive and install all mount sources fds. */
 				receive_idmapsources(syncfd);
 
+				write_log(DEBUG, "received idmap sources");
 				/* Parent finished to send the mount sources fds. */
 				if (read(syncfd, &s, sizeof(s)) != sizeof(s)) {
 					sane_kill(stage2_pid, SIGKILL);
@@ -1557,6 +1507,7 @@ void nsexec(void)
 					sane_kill(stage2_pid, SIGKILL);
 					bail("failed to sync with parent: SYNC_MOUNT_IDMAP_ACK: got %u", s);
 				}
+				write_log(DEBUG, "Sending idmap sources");
 			}
 
 
