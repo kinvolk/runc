@@ -30,119 +30,8 @@
 /* Get all of the CLONE_NEW* flags. */
 #include "namespace.h"
 
-/* TODO: rata. Clean this up later */
-#include <sys/mount.h>
-#include <linux/mount.h>
-#include <sys/syscall.h>
-
-/* mount_setattr() */
-#ifndef MOUNT_ATTR_IDMAP
-#define MOUNT_ATTR_IDMAP 0x00100000
-#endif
-
-#ifndef __NR_mount_setattr
-	#if defined __alpha__
-		#define __NR_mount_setattr 552
-	#elif defined _MIPS_SIM
-		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
-			#define __NR_mount_setattr (442 + 4000)
-		#endif
-		#if _MIPS_SIM == _MIPS_SIM_NABI32	/* n32 */
-			#define __NR_mount_setattr (442 + 6000)
-		#endif
-		#if _MIPS_SIM == _MIPS_SIM_ABI64	/* n64 */
-			#define __NR_mount_setattr (442 + 5000)
-		#endif
-	#elif defined __ia64__
-		#define __NR_mount_setattr (442 + 1024)
-	#else
-		#define __NR_mount_setattr 442
-	#endif
-struct mount_attr {
-	__u64 attr_set;
-	__u64 attr_clr;
-	__u64 propagation;
-	__u64 userns_fd;
-};
-#endif
-
-/* open_tree() */
-#ifndef OPEN_TREE_CLONE
-#define OPEN_TREE_CLONE 1
-#endif
-
-#ifndef OPEN_TREE_CLOEXEC
-#define OPEN_TREE_CLOEXEC O_CLOEXEC
-#endif
-
-#ifndef __NR_open_tree
-	#if defined __alpha__
-		#define __NR_open_tree 538
-	#elif defined _MIPS_SIM
-		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
-			#define __NR_open_tree 4428
-		#endif
-		#if _MIPS_SIM == _MIPS_SIM_NABI32	/* n32 */
-			#define __NR_open_tree 6428
-		#endif
-		#if _MIPS_SIM == _MIPS_SIM_ABI64	/* n64 */
-			#define __NR_open_tree 5428
-		#endif
-	#elif defined __ia64__
-		#define __NR_open_tree (428 + 1024)
-	#else
-		#define __NR_open_tree 428
-	#endif
-#endif
-
-/* move_mount() */
-#ifndef MOVE_MOUNT_F_EMPTY_PATH
-#define MOVE_MOUNT_F_EMPTY_PATH 0x00000004 /* Empty from path permitted */
-#endif
-
-#ifndef MOVE_MOUNT_T_EMPTY_PATH
-#define MOVE_MOUNT_T_EMPTY_PATH 0x00000040 /* Empty to path permitted */
-#endif
-
-#ifndef MOVE_MOUNT__MASK
-#define MOVE_MOUNT__MASK 0x00000077
-#endif
-
-#ifndef __NR_move_mount
-	#if defined __alpha__
-		#define __NR_move_mount 539
-	#elif defined _MIPS_SIM
-		#if _MIPS_SIM == _MIPS_SIM_ABI32	/* o32 */
-			#define __NR_move_mount 4429
-		#endif
-		#if _MIPS_SIM == _MIPS_SIM_NABI32	/* n32 */
-			#define __NR_move_mount 6429
-		#endif
-		#if _MIPS_SIM == _MIPS_SIM_ABI64	/* n64 */
-			#define __NR_move_mount 5429
-		#endif
-	#elif defined __ia64__
-		#define __NR_move_mount (428 + 1024)
-	#else
-		#define __NR_move_mount 429
-	#endif
-#endif
-
-static inline int sys_mount_setattr(int dfd, const char *path, unsigned int flags, struct mount_attr *attr, size_t size)
-{
-	return syscall(__NR_mount_setattr, dfd, path, flags, attr, size);
-}
-
-static inline int sys_open_tree(int dfd, const char *filename, unsigned int flags)
-{
-	return syscall(__NR_open_tree, dfd, filename, flags);
-}
-
-static inline int sys_move_mount(int from_dfd, const char *from_pathname, int to_dfd,
-				 const char *to_pathname, unsigned int flags)
-{
-	return syscall(__NR_move_mount, from_dfd, from_pathname, to_dfd, to_pathname, flags);
-}
+/* Get definitions for idmap sources */
+#include "idmap.h"
 
 extern char *escape_json_string(char *str);
 
@@ -962,24 +851,22 @@ void mount_idmap(int sockfd, pid_t pid, char *idmap_src, int idmap_src_len)
 {
 	char proc_user_path[PATH_MAX];
 
+	/* Open the userns fd only once. */
 	int ret = snprintf(proc_user_path, sizeof(proc_user_path), "/proc/%d/ns/user", pid);
 	if (ret < 0 || (size_t)ret >= sizeof(proc_user_path))
 		bail("failed to create userns path string");
 
-	write_log(DEBUG, "open userns fd: %s", proc_user_path);
 	int userns_fd = open(proc_user_path, O_RDONLY | O_CLOEXEC | O_NOCTTY);
 	if (userns_fd < 0)
 		bail("failed to get user namespace fd");
 
-	/* Create the idmap mount */
-	char *mountidmappedsources_end = idmap_src + idmap_src_len;
-	while (idmap_src < mountidmappedsources_end) {
+	char *idmap_end = idmap_src + idmap_src_len;
+	while (idmap_src < idmap_end) {
 		if (idmap_src[0] == '\0') {
 			idmap_src++;
 			continue;
 		}
 
-		write_log(DEBUG, "open_tree source: %s", idmap_src);
 		int fd_tree = sys_open_tree(-EBADF, idmap_src,
 					    OPEN_TREE_CLONE |
 					    OPEN_TREE_CLOEXEC |
@@ -987,26 +874,26 @@ void mount_idmap(int sockfd, pid_t pid, char *idmap_src, int idmap_src_len)
 		if (fd_tree < 0)
 			bail("failed to open tree for path %s", idmap_src);
 
-		// Initialize this fucking struct!
 		struct mount_attr attr = {
 			.attr_set = MOUNT_ATTR_IDMAP,
 			.userns_fd = userns_fd,
 		};
 
-		write_log(DEBUG, "mount_setattr with userns fd: %s", proc_user_path);
 		ret = sys_mount_setattr(fd_tree, "", AT_EMPTY_PATH | AT_RECURSIVE, &attr, sizeof(attr));
 		if (ret < 0)
 			bail("failed to change mount attributes");
 
+		write_log(DEBUG, "~> sending idmap source: %s with mapping from: %s", idmap_src, proc_user_path);
 		send_fd(sockfd, fd_tree);
 
-		if (close(userns_fd) < 0)
-			bail("error closing userns fd");
 		if (close(fd_tree) < 0)
 			bail("error closing fd_tree");
 
 		idmap_src += strlen(idmap_src) + 1;
 	}
+
+	if (close(userns_fd) < 0)
+		bail("error closing userns fd");
 }
 
 void receive_idmapsources(int sockfd)
@@ -1239,10 +1126,6 @@ void nsexec(void)
 						sane_kill(stage2_pid, SIGKILL);
 						bail("failed to sync with stage-1: write(SYNC_USERMAP_ACK)");
 					}
-
-					// TODO: hardcoded PID now running in a userns in my host.
-					//mount_idmap(446770);
-					//mount_idmap(stage1_pid);
 					break;
 				case SYNC_RECVPID_PLS:
 					write_log(DEBUG, "stage-1 requested pid to be forwarded");
@@ -1291,9 +1174,11 @@ void nsexec(void)
 					}
 					break;
 				case SYNC_MOUNT_IDMAP_PLS:
+					write_log(DEBUG, "stage-1 requested to open idmap sources");
 					mount_idmap(syncfd, stage1_pid, config.mountidmappedsources,
 						    config.mountidmappedsources_len);
 					s = SYNC_MOUNT_IDMAP_ACK;
+					write_log(DEBUG, "idmap sources done, sending SYNC_MOUNT_IDMAP_ACK");
 					if (write(syncfd, &s, sizeof(s)) != sizeof(s)) {
 						sane_kill(stage1_pid, SIGKILL);
 						bail("failed to sync with child: write(SYNC_MOUNT_IDMAP_ACK)");
@@ -1497,7 +1382,7 @@ void nsexec(void)
 				/* Receive and install all mount sources fds. */
 				receive_idmapsources(syncfd);
 
-				write_log(DEBUG, "received idmap sources");
+				write_log(DEBUG, "received opened idmap sources");
 				/* Parent finished to send the mount sources fds. */
 				if (read(syncfd, &s, sizeof(s)) != sizeof(s)) {
 					sane_kill(stage2_pid, SIGKILL);
@@ -1507,7 +1392,6 @@ void nsexec(void)
 					sane_kill(stage2_pid, SIGKILL);
 					bail("failed to sync with parent: SYNC_MOUNT_IDMAP_ACK: got %u", s);
 				}
-				write_log(DEBUG, "Sending idmap sources");
 			}
 
 
