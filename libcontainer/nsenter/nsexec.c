@@ -740,26 +740,30 @@ void send_fd(int sockfd, int fd)
 		bail("failed to send fd %d via unix socket %d", fd, sockfd);
 }
 
-void receive_mountsources(int sockfd)
+/* receive_fd_sources parses env_var as an array of fd numbers and, for each element that is
+ * not -1, it receives an fd via SCM_RIGHTS and dup3 it to the fd requested in
+ * the element of the env var.
+ */
+void receive_fd_sources(int sockfd, const char *env_var)
 {
-	char *mount_fds, *endp;
+	char *fds, *endp;
 	long new_fd;
 
 	// This env var must be a json array of ints.
-	mount_fds = getenv("_LIBCONTAINER_MOUNT_FDS");
+	fds = getenv(env_var);
 
-	if (mount_fds[0] != '[') {
-		bail("malformed _LIBCONTAINER_MOUNT_FDS env var: missing '['");
+	if (fds[0] != '[') {
+		bail("malformed %s env var: missing '['", env_var);
 	}
-	mount_fds++;
+	fds++;
 
-	for (endp = mount_fds; *endp != ']'; mount_fds = endp + 1) {
-		new_fd = strtol(mount_fds, &endp, 10);
-		if (endp == mount_fds) {
-			bail("malformed _LIBCONTAINER_MOUNT_FDS env var: not a number");
+	for (endp = fds; *endp != ']'; fds = endp + 1) {
+		new_fd = strtol(fds, &endp, 10);
+		if (endp == fds) {
+			bail("malformed %s env var: not a number", env_var);
 		}
 		if (*endp == '\0') {
-			bail("malformed _LIBCONTAINER_MOUNT_FDS env var: missing ]");
+			bail("malformed %s env var: missing ]", env_var);
 		}
 		// The list contains -1 when no fd is needed. Ignore them.
 		if (new_fd == -1) {
@@ -767,11 +771,16 @@ void receive_mountsources(int sockfd)
 		}
 
 		if (new_fd == LONG_MAX || new_fd < 0 || new_fd > INT_MAX) {
-			bail("malformed _LIBCONTAINER_MOUNT_FDS env var: fds out of range");
+			bail("malformed %s env var: fds out of range", env_var);
 		}
 
 		receive_fd(sockfd, new_fd);
 	}
+}
+
+void receive_mountsources(int sockfd)
+{
+	receive_fd_sources(sockfd, "_LIBCONTAINER_MOUNT_FDS");
 }
 
 void send_mountsources(int sockfd, pid_t child, char *mountsources, size_t mountsources_len)
