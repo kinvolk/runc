@@ -997,7 +997,7 @@ void nsexec(void)
 			while (!stage1_complete) {
 				enum sync_t s;
 
-				if (read(syncfd, &s, sizeof(s)) != sizeof(s))
+				//if (read(syncfd, &s, sizeof(s)) != sizeof(s))
 					bail("failed to sync with stage-1: next state");
 
 				switch (s) {
