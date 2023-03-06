@@ -124,7 +124,9 @@ func loadSpec(cPath string) (spec *specs.Spec, err error) {
 	}
 	defer cf.Close()
 
-	if err = json.NewDecoder(cf).Decode(&spec); err != nil {
+	decoder := json.NewDecoder(cf)
+	decoder.DisallowUnknownFields()
+	if err = decoder.Decode(&spec); err != nil {
 		return nil, err
 	}
 	if spec == nil {
