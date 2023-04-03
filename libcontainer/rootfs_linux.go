@@ -35,6 +35,7 @@ type mountConfig struct {
 	rootlessCgroups bool
 	cgroupns        bool
 	fd              *int
+	idmapFd         *int
 }
 
 // needsSetupDev returns true if /dev needs to be set up.
@@ -60,6 +61,10 @@ func prepareRootfs(pipe io.ReadWriter, iConfig *initConfig, mountFds mountFds) (
 		return fmt.Errorf("malformed mountFds slice. Expected size: %v, got: %v. Slice: %v", len(config.Mounts), len(mountFds.sourceFds), mountFds.sourceFds)
 	}
 
+	if mountFds.idmapFds != nil && len(mountFds.idmapFds) != len(config.Mounts) {
+		return fmt.Errorf("malformed idmapFds slice. Expected size: %v, got: %v. Slice: %v", len(config.Mounts), len(mountFds.idmapFds), mountFds.idmapFds)
+	}
+
 	mountConfig := &mountConfig{
 		root:            config.Rootfs,
 		label:           config.MountLabel,
@@ -75,6 +80,16 @@ func prepareRootfs(pipe io.ReadWriter, iConfig *initConfig, mountFds mountFds) (
 			mountConfig.fd = &mountFds.sourceFds[i]
 		} else {
 			mountConfig.fd = nil
+		}
+
+		// We validated before we can access idmapFds[i].
+		mountConfig.idmapFd = nil
+		if mountFds.idmapFds != nil && mountFds.idmapFds[i] != -1 {
+			mountConfig.idmapFd = &mountFds.idmapFds[i]
+		}
+
+		if mountConfig.idmapFd != nil && mountConfig.fd != nil {
+			return fmt.Errorf("malformed mountFds and idmapFds slice. Entry: %v has fds in both slices. One must be -1", i)
 		}
 
 		if err := mountToRootfs(m, mountConfig); err != nil {
@@ -421,6 +436,7 @@ func mountToRootfs(m *configs.Mount, c *mountConfig) error {
 
 	mountLabel := c.label
 	mountFd := c.fd
+	idmapFd := c.idmapFd
 	dest, err := securejoin.SecureJoin(rootfs, m.Destination)
 	if err != nil {
 		return err
@@ -463,8 +479,35 @@ func mountToRootfs(m *configs.Mount, c *mountConfig) error {
 		if err := prepareBindMount(m, rootfs, mountFd); err != nil {
 			return err
 		}
-		if err := mountPropagate(m, rootfs, mountLabel, mountFd); err != nil {
-			return err
+
+		if m.IsBind() && m.IsIDMapped() {
+			if idmapFd == nil {
+				return fmt.Errorf("error creating mount %+v: idmapFd is nil, should point to a valid fd", m)
+			}
+			if err = unix.MoveMount(*idmapFd, "", -int(unix.EBADF), dest, unix.MOVE_MOUNT_F_EMPTY_PATH); err != nil {
+				return fmt.Errorf("error on unix.MoveMount %+v: %w", m, err)
+			}
+
+			// In nsexec.c, we did not set the propagation field of mount_attr struct.
+			// So, let's deal with these flags right now!
+			if err := utils.WithProcfd(rootfs, dest, func(procfd string) error {
+				for _, pflag := range m.PropagationFlags {
+					// When using mount for setting propagations flags, the source, file
+					// system type and data arguments are ignored:
+					// https://man7.org/linux/man-pages/man2/mount.2.html
+					// We also ignore procfd because we want to act on dest.
+					if err := mount("", dest, procfd, "", uintptr(pflag), ""); err != nil {
+						return err
+					}
+				}
+				return nil
+			}); err != nil {
+				return fmt.Errorf("change mount propagation through procfd: %w", err)
+			}
+		} else {
+			if err := mountPropagate(m, rootfs, mountLabel, mountFd); err != nil {
+				return err
+			}
 		}
 		// bind mount won't change mount options, we need remount to make mount options effective.
 		// first check that we have non-default options required before attempting a remount

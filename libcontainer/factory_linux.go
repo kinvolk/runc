@@ -212,6 +212,12 @@ func StartInitialization() (err error) {
 		return err
 	}
 
+	// Get idmap fds.
+	idmapFds, err := parseFdsFromEnv("_LIBCONTAINER_IDMAP_FDS")
+	if err != nil {
+		return err
+	}
+
 	// clear the current process's environment to clean any libcontainer
 	// specific env vars.
 	os.Clearenv()
@@ -226,7 +232,7 @@ func StartInitialization() (err error) {
 		}
 	}()
 
-	i, err := newContainerInit(it, pipe, consoleSocket, fifofd, logPipeFd, mountFds{sourceFds: mountSrcFds})
+	i, err := newContainerInit(it, pipe, consoleSocket, fifofd, logPipeFd, mountFds{sourceFds: mountSrcFds, idmapFds: idmapFds})
 	if err != nil {
 		return err
 	}
