@@ -226,7 +226,7 @@ func StartInitialization() (err error) {
 		}
 	}()
 
-	i, err := newContainerInit(it, pipe, consoleSocket, fifofd, logPipeFd, mountFds)
+	i, err := newContainerInit(it, pipe, consoleSocket, fifofd, logPipeFd, mountFds{sourceFds: mountSrcFds})
 	if err != nil {
 		return err
 	}

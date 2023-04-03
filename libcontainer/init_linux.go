@@ -46,6 +46,15 @@ type network struct {
 	TempVethPeerName string `json:"temp_veth_peer_name"`
 }
 
+type mountFds struct {
+	// Fds to use as source when mounting
+	// Size should be the same as container mounts, as it will be paired.
+	// The value -1 is used when no fd is needed for the mount.
+	// Can't have a valid fd in the same position that other slices in this struct.
+	// We need to use only one of these fds on any single mount.
+	sourceFds []int
+}
+
 // initConfig is used for transferring parameters from Exec() to Init()
 type initConfig struct {
 	Args             []string              `json:"args"`
@@ -75,7 +84,7 @@ type initer interface {
 	Init() error
 }
 
-func newContainerInit(t initType, pipe *os.File, consoleSocket *os.File, fifoFd, logFd int, mountFds []int) (initer, error) {
+func newContainerInit(t initType, pipe *os.File, consoleSocket *os.File, fifoFd, logFd int, mountFds mountFds) (initer, error) {
 	var config *initConfig
 	if err := json.NewDecoder(pipe).Decode(&config); err != nil {
 		return nil, err
@@ -86,8 +95,8 @@ func newContainerInit(t initType, pipe *os.File, consoleSocket *os.File, fifoFd,
 	switch t {
 	case initSetns:
 		// mountFds must be nil in this case. We don't mount while doing runc exec.
-		if mountFds != nil {
-			return nil, errors.New("mountFds must be nil; can't mount from exec")
+		if mountFds.sourceFds != nil {
+			return nil, errors.New("mount source fds must be nil; can't mount from exec")
 		}
 
 		return &linuxSetnsInit{
