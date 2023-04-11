@@ -1,6 +1,8 @@
 package configs
 
-import "golang.org/x/sys/unix"
+import (
+	"golang.org/x/sys/unix"
+)
 
 type Mount struct {
 	// Source path for the mount.
@@ -29,8 +31,17 @@ type Mount struct {
 
 	// Extensions are additional flags that are specific to runc.
 	Extensions int `json:"extensions"`
+
+	// UID/GID mappings used for changing file owners w/o calling chown, fs should support it.
+	// Every mount point could have its own mapping.
+	UIDMappings []IDMap `json:"uidMappings"`
+	GIDMappings []IDMap `json:"gidMappings"`
 }
 
 func (m *Mount) IsBind() bool {
 	return m.Flags&unix.MS_BIND != 0
+}
+
+func (m *Mount) IsIDMapped() bool {
+	return len(m.UIDMappings) > 0 || len(m.GIDMappings) > 0
 }
