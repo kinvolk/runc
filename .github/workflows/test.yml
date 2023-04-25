@@ -51,7 +51,7 @@ jobs:
         curl -fSsl $REPO/Release.key | sudo apt-key add -
         echo "deb $REPO/ /" | sudo tee /etc/apt/sources.list.d/criu.list
         sudo apt update
-        sudo apt install libseccomp-dev criu sshfs
+        sudo apt install libseccomp-dev criu sshfs linux-libc-dev libc6-dev
 
     - name: install deps (criu ${{ matrix.criu }})
       if: matrix.criu != ''
@@ -123,7 +123,7 @@ jobs:
         # Due to a bug in apt, we have to update it first
         # (see https://bugs.launchpad.net/ubuntu-cdimage/+bug/1871268)
         sudo apt -q install apt
-        sudo apt -q install libseccomp-dev libseccomp-dev:i386 gcc-multilib criu
+        sudo apt -q install libseccomp-dev libseccomp-dev:i386 gcc-multilib criu  linux-libc-dev libc6-dev
 
     - name: install go
       uses: actions/setup-go@v4
