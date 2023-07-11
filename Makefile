@@ -66,9 +66,9 @@ runc: runc-dmz
 	$(GO_BUILD) -o runc .
 	make verify-dmz-arch
 
-all: runc recvtty sd-helper seccompagent fs-idmap
+all: runc recvtty sd-helper seccompagent fs-idmap memfd-bind
 
-recvtty sd-helper seccompagent fs-idmap:
+recvtty sd-helper seccompagent fs-idmap memfd-bind:
 	$(GO_BUILD) -o contrib/cmd/$@/$@ ./contrib/cmd/$@
 
 static: runc-dmz
