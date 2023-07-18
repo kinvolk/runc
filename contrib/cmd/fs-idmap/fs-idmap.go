@@ -25,8 +25,8 @@ func main() {
 	cmd := exec.Command("/usr/bin/sleep", "5")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags:  syscall.CLONE_NEWUSER,
-		UidMappings: []syscall.SysProcIDMap{{ContainerID: 0, HostID: 65536, Size: 65536}},
-		GidMappings: []syscall.SysProcIDMap{{ContainerID: 0, HostID: 65536, Size: 65536}},
+		UIDMappings: []syscall.SysProcIDMap{{ContainerID: 0, HostID: 65536, Size: 65536}},
+		GIDMappings: []syscall.SysProcIDMap{{ContainerID: 0, HostID: 65536, Size: 65536}},
 	}
 	if err := cmd.Start(); err != nil {
 		log.Fatalf("failed to run the helper binary: %v", err)
