@@ -57,17 +57,19 @@ func mount(source, target, fstype string, flags uintptr, data string) error {
 }
 
 // mountViaFDs is a unix.Mount wrapper which uses srcFD instead of source,
-// and dstFD instead of target, unless those are empty. The *FD arguments,
-// if non-empty, are expected to be in the form of a path to an opened file
-// descriptor on procfs (i.e. "/proc/self/fd/NN").
+// and dstFD instead of target, unless those are empty.
+// If srcFD is different than -1, its path (i.e. "/proc/self/fd/NN") will be
+// constructed by this function.
+// dstFD argument, if non-empty, is expected to be in the form of a path to an
+// opened file descriptor on procfs (i.e. "/proc/self/fd/NN").
 //
 // If case an FD is used instead of a source or a target path, the
 // corresponding path is only used to add context to an error in case
 // the mount operation has failed.
-func mountViaFDs(source, srcFD, target, dstFD, fstype string, flags uintptr, data string) error {
+func mountViaFDs(source string, srcFD int, target, dstFD, fstype string, flags uintptr, data string) error {
 	src := source
-	if srcFD != "" {
-		src = srcFD
+	if srcFD != -1 {
+		src = "/proc/self/fd/" + strconv.Itoa(srcFD)
 	}
 	dst := target
 	if dstFD != "" {
