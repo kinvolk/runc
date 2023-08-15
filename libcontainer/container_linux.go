@@ -457,27 +457,39 @@ func (c *Container) newParentProcess(p *Process) (parentProcess, error) {
 	}
 	logFilePair := filePair{parentLogPipe, childLogPipe}
 
-	// Make sure we use a new safe copy of /proc/self/exe each time this is
-	// called, to make sure that if a container manages to overwrite the file
-	// it cannot affect other containers on the system. For runc, this code
-	// will only ever be called once, but libcontainer users might call this
-	// more than once.
+	// Make sure we use a new safe copy of /proc/self/exe or the runc-dmz
+	// binary each time this is called, to make sure that if a container
+	// manages to overwrite the file it cannot affect other containers on the
+	// system. For runc, this code will only ever be called once, but
+	// libcontainer users might call this more than once.
 	p.closeClonedExes()
 	var (
 		exePath string
-		safeExe *os.File
+		// only one of dmzExe or safeExe are used at a time
+		dmzExe, safeExe *os.File
 	)
 	if dmz.IsSelfExeCloned() {
 		// /proc/self/exe is already a cloned binary -- no need to do anything
 		logrus.Debugf("skipping binary cloning -- /proc/self/exe is already cloned!")
 		exePath = "/proc/self/exe"
 	} else {
-		safeExe, err = dmz.CloneSelfExe(c.root)
-		if err != nil {
-			return nil, fmt.Errorf("unable to create safe /proc/self/exe clone for runc init: %w", err)
+		dmzExe, err = dmz.Binary(c.root)
+		if err == nil {
+			// We can use our own executable without cloning if we are using
+			// runc-dmz.
+			exePath = "/proc/self/exe"
+			p.clonedExes = append(p.clonedExes, dmzExe)
+		} else if errors.Is(err, dmz.ErrNoDmzBinary) {
+			logrus.Debugf("runc-dmz binary not embedded in runc binary, falling back to /proc/self/exe clone")
+			safeExe, err = dmz.CloneSelfExe(c.root)
+			if err != nil {
+				return nil, fmt.Errorf("unable to create safe /proc/self/exe clone for runc init: %w", err)
+			}
+			exePath = "/proc/self/fd/" + strconv.Itoa(int(safeExe.Fd()))
+			p.clonedExes = append(p.clonedExes, safeExe)
+		} else {
+			return nil, fmt.Errorf("failed to create runc-dmz binary clone: %w", err)
 		}
-		exePath = "/proc/self/fd/" + strconv.Itoa(int(safeExe.Fd()))
-		p.clonedExes = append(p.clonedExes, safeExe)
 	}
 
 	cmd := exec.Command(exePath, "init")
@@ -502,6 +514,12 @@ func (c *Container) newParentProcess(p *Process) (parentProcess, error) {
 		"_LIBCONTAINER_INITPIPE="+strconv.Itoa(stdioFdCount+len(cmd.ExtraFiles)-1),
 		"_LIBCONTAINER_STATEDIR="+c.root,
 	)
+
+	if dmzExe != nil {
+		cmd.ExtraFiles = append(cmd.ExtraFiles, dmzExe)
+		cmd.Env = append(cmd.Env,
+			"_LIBCONTAINER_DMZEXEFD="+strconv.Itoa(stdioFdCount+len(cmd.ExtraFiles)-1))
+	}
 
 	cmd.ExtraFiles = append(cmd.ExtraFiles, childLogPipe)
 	cmd.Env = append(cmd.Env,

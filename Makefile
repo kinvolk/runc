@@ -1,5 +1,10 @@
+SHELL = /bin/bash
+
 CONTAINER_ENGINE := docker
 GO ?= go
+
+# Get CC values for cross-compilation.
+include cc_platform.mk
 
 PREFIX ?= /usr/local
 BINDIR := $(PREFIX)/sbin
@@ -57,16 +62,23 @@ endif
 
 .DEFAULT: runc
 
-runc:
+runc: runc-dmz
 	$(GO_BUILD) -o runc .
+	make verify-dmz-arch
 
 all: runc recvtty sd-helper seccompagent fs-idmap
 
 recvtty sd-helper seccompagent fs-idmap:
 	$(GO_BUILD) -o contrib/cmd/$@/$@ ./contrib/cmd/$@
 
-static:
+static: runc-dmz
 	$(GO_BUILD_STATIC) -o runc .
+	make verify-dmz-arch
+
+.PHONY: runc-dmz
+runc-dmz:
+	rm -f libcontainer/dmz/runc-dmz
+	$(GO) generate -tags "$(BUILDTAGS)" ./libcontainer/dmz
 
 releaseall: RELEASE_ARGS := "-a 386 -a amd64 -a arm64 -a armel -a armhf -a ppc64le -a riscv64 -a s390x"
 releaseall: release
@@ -107,7 +119,7 @@ unittest: runcimage
 		-v $(CURDIR):/go/src/$(PROJECT) \
 		$(RUNC_IMAGE) make localunittest TESTFLAGS="$(TESTFLAGS)"
 
-localunittest: all
+localunittest: runc-dmz all
 	$(GO) test -timeout 3m -tags "$(BUILDTAGS)" $(TESTFLAGS) -v ./...
 
 integration: runcimage
@@ -147,12 +159,12 @@ install-man: man
 	install -D -m 644 man/man8/*.8 $(DESTDIR)$(MANDIR)/man8
 
 clean:
-	rm -f runc runc-*
+	rm -f runc runc-* libcontainer/dmz/runc-dmz
 	rm -f contrib/cmd/recvtty/recvtty
 	rm -f contrib/cmd/sd-helper/sd-helper
 	rm -f contrib/cmd/seccompagent/seccompagent
 	rm -f contrib/cmd/fs-idmap/fs-idmap
-	rm -rf release
+	sudo rm -rf release
 	rm -rf man/man8
 
 cfmt: C_SRC=$(shell git ls-files '*.c' | grep -v '^vendor/')
@@ -188,6 +200,18 @@ verify-dependencies: vendor
 	@test -z "$$(git status --porcelain -- go.mod go.sum vendor/)" \
 		|| (echo -e "git status:\n $$(git status -- go.mod go.sum vendor/)\nerror: vendor/, go.mod and/or go.sum not up to date. Run \"make vendor\" to update"; exit 1) \
 		&& echo "all vendor files are up to date."
+verify-dmz-arch:
+	@test -s libcontainer/dmz/runc-dmz || exit 0; \
+		set -Eeuo pipefail; \
+		export LANG=C.UTF-8; \
+		echo "readelf -h runc"; \
+		readelf -h runc | grep -E "(Machine|Flags):"; \
+		echo "readelf -h libcontainer/dmz/runc-dmz"; \
+		readelf -h libcontainer/dmz/runc-dmz | grep -E "(Machine|Flags):"; \
+		diff -u \
+			<(readelf -h runc | grep -E "(Machine|Flags):") \
+			<(readelf -h libcontainer/dmz/runc-dmz | grep -E "(Machine|Flags):") \
+		&& echo "runc-dmz architecture matches runc binary."
 
 validate-keyring:
 	script/keyring_validate.sh
@@ -197,4 +221,4 @@ validate-keyring:
 	test localtest unittest localunittest integration localintegration \
 	rootlessintegration localrootlessintegration shell install install-bash \
 	install-man clean cfmt shfmt localshfmt shellcheck \
-	vendor verify-changelog verify-dependencies validate-keyring
+	vendor verify-changelog verify-dependencies verify-dmz-arch validate-keyring
