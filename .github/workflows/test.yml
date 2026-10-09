@@ -35,7 +35,7 @@ jobs:
     steps:
 
     - name: checkout
-      uses: actions/checkout@v2
+      uses: actions/checkout@0717577d45739eb3c851188b29f50ed6c0b2194e # v2.8.0
 
     - name: install deps
       if: matrix.criu == ''
@@ -60,7 +60,7 @@ jobs:
         rm -rf ~/criu
 
     - name: install go ${{ matrix.go-version }}
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@bfdd3570ce990073878bf10f6b2d79082de49492 # v2.2.0
       with:
         stable: '!contains(${{ matrix.go-version }}, "beta") && !contains(${{ matrix.go-version }}, "rc")'
         go-version: ${{ matrix.go-version }}
@@ -69,7 +69,7 @@ jobs:
       run: sudo -E PATH="$PATH" make EXTRA_FLAGS="${{ matrix.race }}" all
 
     - name: install bats
-      uses: mig4/setup-bats@v1
+      uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d # v1.2.0
       with:
         bats-version: 1.3.0
 
@@ -104,7 +104,7 @@ jobs:
     steps:
 
     - name: checkout
-      uses: actions/checkout@v2
+      uses: actions/checkout@0717577d45739eb3c851188b29f50ed6c0b2194e # v2.8.0
 
     - name: install deps
       run: |
@@ -119,7 +119,7 @@ jobs:
         sudo apt -q install libseccomp-dev libseccomp-dev:i386 gcc-multilib criu
 
     - name: install go
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@bfdd3570ce990073878bf10f6b2d79082de49492 # v2.2.0
       with:
         go-version: 1.x # Latest stable
 
