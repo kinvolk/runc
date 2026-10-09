@@ -13,12 +13,12 @@ jobs:
   lint:
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@0717577d45739eb3c851188b29f50ed6c0b2194e # v2.8.0
       - name: install deps
         run: |
           sudo apt -q update
           sudo apt -q install libseccomp-dev
-      - uses: golangci/golangci-lint-action@v2
+      - uses: golangci/golangci-lint-action@5c56cd6c9dc07901af25baab6f2b0d9f3b7c3018 # v2.5.2
         with:
           # must be specified without patch version
           version: v1.42
@@ -29,9 +29,9 @@ jobs:
       # Don't ignore C warnings. Note that the output of "go env CGO_CFLAGS" by default is "-g -O2", so we keep them.
       CGO_CFLAGS: -g -O2 -Werror
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@0717577d45739eb3c851188b29f50ed6c0b2194e # v2.8.0
       - name: install go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@bfdd3570ce990073878bf10f6b2d79082de49492 # v2.2.0
         with:
           go-version: 1.x # Latest stable
       - name: compile with no build tags
@@ -40,7 +40,7 @@ jobs:
   codespell:
     runs-on: ubuntu-20.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@0717577d45739eb3c851188b29f50ed6c0b2194e # v2.8.0
     - name: install deps
       # Version of codespell bundled with Ubuntu is way old, so use pip.
       run: pip install codespell
@@ -50,13 +50,13 @@ jobs:
   shfmt:
     runs-on: ubuntu-20.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@0717577d45739eb3c851188b29f50ed6c0b2194e # v2.8.0
     - name: vars
       run: |
         echo "VERSION=3.3.1" >> $GITHUB_ENV
         echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
     - name: cache go mod and $GOCACHE
-      uses: actions/cache@v2
+      uses: actions/cache@8492260343ad570701412c2f464a5877dc76bace # v2
       with:
         path: |
           ~/go/pkg/mod
@@ -73,7 +73,7 @@ jobs:
   shellcheck:
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@0717577d45739eb3c851188b29f50ed6c0b2194e # v2.8.0
       - name: vars
         run: |
           echo 'VERSION=v0.7.2' >> $GITHUB_ENV
@@ -88,7 +88,7 @@ jobs:
           sha256sum ~/bin/shellcheck | grep -q $SHA256SUM
           # make sure to remove the old version
           sudo rm -f /usr/bin/shellcheck
-      - uses: lumaxis/shellcheck-problem-matchers@v1
+      - uses: lumaxis/shellcheck-problem-matchers@27050b15e3fb7c6cf75810eb7eab17045c38db4e # v1.1.2
       - name: shellcheck
         run: |
           make shellcheck
@@ -96,13 +96,13 @@ jobs:
   deps:
     runs-on: ubuntu-20.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@0717577d45739eb3c851188b29f50ed6c0b2194e # v2.8.0
     - name: install go
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@bfdd3570ce990073878bf10f6b2d79082de49492 # v2.2.0
       with:
         go-version: 1.x # Latest stable
     - name: cache go mod and $GOCACHE
-      uses: actions/cache@v2
+      uses: actions/cache@8492260343ad570701412c2f464a5877dc76bace # v2
       with:
         path: |
           ~/go/pkg/mod
@@ -120,12 +120,12 @@ jobs:
     steps:
       - name: get pr commits
         id: 'get-pr-commits'
-        uses: tim-actions/get-pr-commits@v1.1.0
+        uses: tim-actions/get-pr-commits@55b867b9b28954e6f5c1a0fe2f729dc926c306d0 # v1.1.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: check subject line length
-        uses: tim-actions/commit-message-checker-with-regex@v0.3.1
+        uses: tim-actions/commit-message-checker-with-regex@d6d9770051dd6460679d1cab1dcaa8cffc5c2bbd # v0.3.1
         with:
           commits: ${{ steps.get-pr-commits.outputs.commits }}
           pattern: '^.{0,72}(\n.*)*$'
@@ -136,7 +136,7 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
     - name: checkout
-      uses: actions/checkout@v2
+      uses: actions/checkout@0717577d45739eb3c851188b29f50ed6c0b2194e # v2.8.0
       with:
         fetch-depth: 0
     - name: install deps
@@ -153,7 +153,7 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
     - name: checkout
-      uses: actions/checkout@v2
+      uses: actions/checkout@0717577d45739eb3c851188b29f50ed6c0b2194e # v2.8.0
       with:
         fetch-depth: 0
       # We have to run this under Docker as Ubuntu (host) does not support all
@@ -165,14 +165,14 @@ jobs:
       # under Docker will emerge, it will be good to have a separate make
       # runcimage job and share its result (the docker image) with whoever
       # needs it.
-    - uses: satackey/action-docker-layer-caching@v0.0.11
+    - uses: satackey/action-docker-layer-caching@46d2c640b1d8ef50d185452ad6fb324e6bd1d052 # v0.0.11
       continue-on-error: true
     - name: build docker image
       run: make runcimage
     - name: make releaseall
       run: make releaseall
     - name: upload artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@82c141cc518b40d92cc801eee768e7aafc9c2fa2 # v2.3.1
       with:
         name: release-${{ github.run_id }}
         path: release/*
